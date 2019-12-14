@@ -1,0 +1,8 @@
+cleo>=0.7.6
+uvloop
+asyncio
+aiohttp_jinja2
+jinja2
+pyppeteer
+pyyaml
+colorlog
