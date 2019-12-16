@@ -138,6 +138,11 @@ class MyPyppeteer(metaclass=SingletonClass):
         self.browser, self.page = await MyPyppeteer().connect_browser()
         print(f'{len(await self.browser.pages())}')
 
+    async def get_property_for_selector(self, selector:str, attr:str, page):
+        return await page.evaluate(f'''
+            (selector) => document.querySelector({selector}).{attr}
+        ''')
+    
     async def get_conenction(self, daemon):
         if not self.ws:
             self.ws = self.browser.wsEndpoint
