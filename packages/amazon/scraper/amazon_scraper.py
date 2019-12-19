@@ -2,7 +2,10 @@ from packages.my_pyppeteer.ctrls import MyPyppeteer
 from packages.core.utils.app_loop import AppLoop
 from aiohttp import web
 import asyncio
+import os 
 
+
+dir_path = os.path.dirname(os.path.realpath(__file__))
 class AmazonScraper:
     """
         Controlador para obtener los datos de los productos
@@ -52,8 +55,8 @@ class AmazonScraper:
             (en caso de poseerla)
         """
 
-        file = open('amazon_scraper.getDesc.js')
-        script_js = file.read()
+        with open(f'{dir_path}/amazon_scraper.getDesc.js') as file:
+            script_js = file.read()
 
         return await page.evaluate(script_js)
 
@@ -62,8 +65,9 @@ class AmazonScraper:
             Retorna atributos importantes para el negocio, tales como
             SKU, dimensiones, peso del producto y del envio, numero del modelo, entro otros
         """
-        file = open('amazon_scraper.getInfo.js')
-        script_js = file.read()
+    
+        with open(f'{dir_path}/amazon_scraper.getInfo.js') as file:
+            script_js = file.read()
         return await page.evaluate(script_js)
 
     async def get_feature(self, page:MyPyppeteer.page) -> dict:
@@ -72,8 +76,8 @@ class AmazonScraper:
             lado de las variaciones en el WebSite de Amazon.
         """
 
-        file = open('amazon_scraper.getFeatures.js')
-        script_js = file.read()
+        with open(f'{dir_path}/amazon_scraper.getFeatures.js') as file:
+            script_js = file.read()
         return await page.evaluate(script_js)
 
     async def get_variations(self, page:MyPyppeteer.page) -> dict:
@@ -82,7 +86,7 @@ class AmazonScraper:
             e imagenes.
         """
 
-        file = open('amazon_scraper.getVariations.js')
-        script_js = file.read()
+        with open(f'{dir_path}amazon_scraper.getVariations.js') as file:
+            script_js = file.read()
         return await page.evaluate(script_js)
         
