@@ -30,8 +30,11 @@ class CtrlsScraper:
         "-5": "CRITICAL_ERROR",
     }
     sem = asyncio.Semaphore(3)
-
-    async def get_product(self, sku, country='usa', provider='Amazon'):
+    url_origin = {
+        # "Ebay": f"https://www.ebay.com/itm/{sku}",
+        "Amazon": f"https://www.amazon.com/dp/sku",
+    }
+    async def get_product(self, sku:str, country='usa', provider='Amazon'):
         profile_scraper = 'scraper'
         profile_scraper = f'{profile_scraper}_{country}'
         async with self.sem:
@@ -42,13 +45,9 @@ class CtrlsScraper:
             await page.close()
             return cost_product
 
-    async def switch(self, provider, sku, page):
-        url_origin = {
-            # "Ebay": f"https://www.ebay.com/itm/{sku}",
-            "Amazon": f"https://www.amazon.com/dp/{sku}",
-        }
-        if provider in url_origin:
-            url = url_origin.get(provider)
+    async def switch(self, provider, sku:str, page):
+        if provider in self.url_origin:
+            url = self.url_origin[provider].replace('sku',sku)
             logging.getLogger("log_print_full").debug(f"URL: {url}")
             await page.goto(url)
             while await page.querySelector('[id="captchacharacters"]'):
@@ -57,22 +56,21 @@ class CtrlsScraper:
                 await page.goto(url)
 
             if (provider == 'Amazon'):
-                res = await self.search_in_amazon(page, sku)
+                res = await self.get_product_amazon(page, sku)
 
             return self.wrap_contex(res)
 
         else:
             logging.getLogger("log_print_full").error(
-                f"La URL no corresponde con ninguno de los scraper de tiendas({url_origin})"
+                f"La URL no corresponde con ninguno de los scraper de tiendas({self.url_origin})"
             )
 
-    async def search_in_amazon(self, page, sku:str):
+    async def get_info_product(self, page):
         """
         Esta funcion obtenie los datos del producto de la interfaz del usuario, si
         el elemento con el precio no existe, asumimos que el producto
         no se encuentra disponible.
         """
-
         # PRICE PRODUCT AND PRICE SHIPPING
         pattern_price = r'(\d+\.?\d*)'
         pattern_price_shipping = r'(\d+\.?\d*) [Ss]hipping'
@@ -81,7 +79,7 @@ class CtrlsScraper:
         price_draw = await MyPyppeteer().get_property(
             price_element, "innerText", page
         )
-
+        price_draw = price_draw if price_draw else ''
         match = re.findall(pattern_price, price_draw)
         if not match:
             price_product_str = self.PRICE_NOT_FOUND
@@ -115,17 +113,29 @@ class CtrlsScraper:
         )
         # TITLE #END
         # IMAGES
-        images_element = await page.querySelectorAll('#altImages img')
+        await page.evaluate("""
+        () => {
+            const event = new MouseEvent('mouseover', {
+            'view': window,
+            'bubbles': true,
+            'cancelable': true
+            });
+
+            buttons = document.querySelectorAll('#altImages .item')
+            buttons.forEach( btn => {btn.dispatchEvent(event)})
+        }
+        """)
+        images_element = await page.querySelectorAll('#main-image-container img')
         images_coros = [MyPyppeteer().get_property(
             image, "src", page
-        ) for image in images_element[1:]]
+        ) for image in images_element]
     
         images_draw = await asyncio.gather(*images_coros)
-        images = [image.replace('_AC_US40_.','') for image in images_draw]
+        images = [re.sub(r'\._.+_','',image) for image in images_draw]
         # IMAGES #END
 
         # DESCRIPTION
-        description_element = await page.querySelectorAll('#productDescription p')
+        description_element = await page.querySelector('#productDescription p')
         description = await MyPyppeteer().get_property(
             description_element, "innerText", page
         )
@@ -138,10 +148,10 @@ class CtrlsScraper:
 
                     const getAttributeBySelector = (selector, attributes) => {
                         rows = document.querySelectorAll(selector)
-                            rows.array.forEach(row => {
-                            key = row.children[0].innerText.replace(/ /g, '_').toLowerCase()
-                            value = row.children[1].innerText
-                            attributes[key] = value
+                        rows.forEach(row => {
+                        key = row.children[0].innerText.replace(/ /g, '_').toLowerCase()
+                        value = row.children[1].innerText
+                        attributes[key] = value
                         });
                         return attributes
                     }
@@ -160,12 +170,13 @@ class CtrlsScraper:
             if 'dimensions' in attribute_key:
                 _dimensions_ = dict()
                 # Las dimensiones vienen en este formato "7.1 x 4 x 1.9 inches"
-                dimensions_draw = attributes_draw[attribute_key].split('x')
+                dimensions_draw = attributes_draw[attribute_key].split(';')
+                dimensions_draw = dimensions_draw[0].split('x')
                 _dimensions_['x'] = float(dimensions_draw[0])
                 _dimensions_['y'] = float(dimensions_draw[1])
-                dimensions_draw = dimensions_draw.split(' ')
+                dimensions_draw = dimensions_draw[2].strip().split(' ')
                 _dimensions_['z'] = float(dimensions_draw[0])
-                unit = float(dimensions_draw[1])
+                unit = dimensions_draw[1]
 
                 _dimensions_['x'] = self.distance_converter(_dimensions_['x'], unit)
                 _dimensions_['y'] = self.distance_converter(_dimensions_['y'], unit)
@@ -181,15 +192,12 @@ class CtrlsScraper:
                 if weight < _weight_:
                     weight = _weight_
 
-            elif attribute_key not in ('customer_reviews', 'best_sellers_rank', 'asin'):
+            elif 'asin' in attribute_key:
+                sku = attributes_draw[attribute_key]
+
+            elif attribute_key not in ('customer_reviews', 'best_sellers_rank'):
                 attributes[attribute_key] = attributes_draw[attribute_key]
         # ATTRIBUTES #END
-
-        # VARIATIONS
-
-        # variations_element = await page.querySelectorAll('[id^="variation_"]')
-
-        # VARIATIONS #END
 
         product = {
             "sku": sku,
@@ -199,8 +207,44 @@ class CtrlsScraper:
             "images": images,
             "price": {"product": price_product, "shipping": price_shipping},
         }
+        return product
 
-        return [product]
+    async def get_product_amazon(self, page, sku):
+        variations_element = await page.querySelectorAll('[id^="variation_"]')
+        products = list()
+        if variations_element:
+            read_JSON = False
+            json_string = ''
+            bodyHTML = bodyHTML = await page.evaluate("() => document.body.innerHTML")
+            for line in bodyHTML.split('\n'):
+                if read_JSON:
+                    if not ';' in line:
+                        json_string += line
+                    else:
+                        json_string += '}'
+                        break
+                elif 'twister-js-init-dpx-data' in line:
+                    read_JSON = True
+            
+            variations_draw = await page.evaluate(
+                '() => {\n'+json_string+'\nreturn dataToReturn.dimensionToAsinMap\n'+'}'
+            )
+        
+        if variations_draw:
+            variations = list(variations_draw.values())
+            variations.remove(sku)
+        else:
+            variations = list()
+
+        product = await self.get_info_product(page)
+        products.append(product)
+        for variation in variations:
+            await page.goto(self.url_origin['Amazon'].replace('sku',variation))
+            product = await self.get_info_product(page)
+            products.append(product)
+
+        breakpoint()
+        return products
 
     def price_or_err(self, pattern: str, string, value_default, pos=0) -> str:
         """
@@ -257,14 +301,13 @@ class CtrlsScraper:
                         f.write(
                             f'{self.message[level]} - item: {product["price"]} - URL: https://www.amazon.com/dp/{product.get("sku")}\n'
                         )
-                    breakpoint()
                     print(product)
                     return {"ok": False, "msg": msg, "data":product}
             return {"ok": True, "data": products}
         else:
             return {"ok": False, "msg": self.PRODUCT_NOT_FOUNT}
 
-    async def weight_converter(self, count, unit):
+    def weight_converter(self, count, unit):
         converter = {
             'ounces': 28.3495,
             'ounce': 28.3495,
@@ -274,7 +317,7 @@ class CtrlsScraper:
         }
         return converter[unit]*count
 
-    async def distance_converter(self, count, unit):
+    def distance_converter(self, count, unit):
         converter = {
             'inches': 2.54,
             'inche': 2.54,

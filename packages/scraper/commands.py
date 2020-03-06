@@ -9,8 +9,10 @@ class AllCommands:
 
         scraper:amazon_scan_product
         {--sku= : sku}
+        {--country= : country}
         """
 
         def handle(self):
             sku = self.option('sku')
-            AppLoop().get_loop().run_until_complete(CtrlsScraper().get_product(sku))
+            country = self.option('country') if self.option('country') else 'usa'
+            AppLoop().get_loop().run_until_complete(CtrlsScraper().get_product(sku, country))
