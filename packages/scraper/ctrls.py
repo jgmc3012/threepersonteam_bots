@@ -156,16 +156,26 @@ class CtrlsScraper:
                         return attributes
                     }
 
-                    attributes = getAttributeBySelector('#productDetails_techSpec_section_1 tr', attributes)
-                    attributes = getAttributeBySelector('#productDetails_detailBullets_sections1 tr', attributes)
+                    attributes = getAttributeBySelector('#prodDetails tr', attributes)
 
                     return attributes
                 }
             """
         )
-        attributes = dict()
         dimensions = dict()
         weight = 0
+        attributes_elements = await page.querySelectorAll('[id^=variation_] .a-row')
+        attributes_coros = [MyPyppeteer().get_property(
+                attribute, "innerText", page
+            ) for attribute in attributes_elements]
+        attributes_string = await asyncio.gather(*attributes_coros)
+        attributes = dict()
+        for attribute_str in attributes_string:
+            attribute = attribute_str.split(':')
+            name = attribute[0].lower()
+            value = attribute[1].lower()
+            attributes[name] = value
+
         for attribute_key in attributes_draw:
             if 'dimensions' in attribute_key:
                 _dimensions_ = dict()
@@ -176,7 +186,7 @@ class CtrlsScraper:
                 _dimensions_['y'] = float(dimensions_draw[1])
                 dimensions_draw = dimensions_draw[2].strip().split(' ')
                 _dimensions_['z'] = float(dimensions_draw[0])
-                unit = dimensions_draw[1]
+                unit = dimensions_draw[1].lower()
 
                 _dimensions_['x'] = self.distance_converter(_dimensions_['x'], unit)
                 _dimensions_['y'] = self.distance_converter(_dimensions_['y'], unit)
@@ -187,7 +197,7 @@ class CtrlsScraper:
 
             elif 'weight' in attribute_key:
                 weight_draw = attributes_draw[attribute_key].split(' ')
-                _weight_ = self.weight_converter(float(weight_draw[0]), weight_draw[1])
+                _weight_ = self.weight_converter(float(weight_draw[0]), weight_draw[1].lower())
 
                 if weight < _weight_:
                     weight = _weight_
@@ -198,7 +208,6 @@ class CtrlsScraper:
             elif attribute_key not in ('customer_reviews', 'best_sellers_rank'):
                 attributes[attribute_key] = attributes_draw[attribute_key]
         # ATTRIBUTES #END
-
         product = {
             "sku": sku,
             "title": title,
@@ -242,8 +251,7 @@ class CtrlsScraper:
             await page.goto(self.url_origin['Amazon'].replace('sku',variation))
             product = await self.get_info_product(page)
             products.append(product)
-
-        breakpoint()
+        print(len(products))
         return products
 
     def price_or_err(self, pattern: str, string, value_default, pos=0) -> str:
@@ -324,3 +332,6 @@ class CtrlsScraper:
             'in': 2.54,
         }
         return converter[unit]*count
+
+    def get_skus_from_page(self, page):
+        pass
