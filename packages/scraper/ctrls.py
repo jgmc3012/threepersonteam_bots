@@ -30,7 +30,7 @@ class CtrlsScraper:
         "-5": "CRITICAL_ERROR",
     }
     sem = asyncio.Semaphore(3)
-    url_origin = "https://www.amazon.com/dp/sku"
+    url_origin = "https://www.amazon.com/dp/sku?psc=1"
 
     async def get_product(self, sku:str, country='usa'):
         profile_scraper = 'scraper'
@@ -49,7 +49,7 @@ class CtrlsScraper:
             products = await self.get_product_amazon(page, sku)
 
             await page.close()
-            return products
+        return products
 
     async def get_info_product(self, page, sku):
         """
@@ -61,19 +61,11 @@ class CtrlsScraper:
         pattern_price = r'(\d+\.?\d*)'
         pattern_price_shipping = r'(\d+\.?\d*) [Ss]hipping'
 
-        price_element = await page.querySelector("#priceblock_ourprice")
-        if price_element:
-            price_product_draw = await MyPyppeteer().get_property(
-                price_element, "innerText", page
-            )
-
+        price_product_element = await page.querySelector("#priceblock_ourprice")
+        if price_product_element:
             price_shipping_element = await page.querySelector(
                 "#ourprice_shippingmessage"
             )
-            price_shipping_draw = await MyPyppeteer().get_property(
-                price_shipping_element, "innerText", page
-            )
-            price_shipping_draw = price_shipping_draw if price_shipping_draw else ''
 
         else:
             price_product_element = await page.querySelector("#buyNewSection")
@@ -81,13 +73,16 @@ class CtrlsScraper:
             # Este elemento contine MUCHA mas informacion que el precio de envio
             # es la unica manera que haya, puede que conlleve a Bugs
             price_shipping_element = await page.querySelector("#buyNewInner")
-            if price_product_element and price_shipping_element:
-                price_product_draw = await MyPyppeteer().get_property(
-                    price_product_element, "innerText", page
-                )
-                price_shipping_draw = await MyPyppeteer().get_property(
-                    price_shipping_element, "innerText", page
-                )
+
+        price_product_draw = await MyPyppeteer().get_property(
+            price_product_element, "innerText", page
+        )
+        price_shipping_draw = await MyPyppeteer().get_property(
+            price_shipping_element, "innerText", page
+        )
+
+        price_shipping_draw = price_shipping_draw if price_shipping_draw else ''
+        price_product_draw = price_product_draw if price_product_draw else ''
 
         price_product_str = self.price_or_err(
             pattern_price, price_product_draw, self.PRICE_NOT_FOUND
@@ -218,10 +213,21 @@ class CtrlsScraper:
         return product
 
     async def get_product_amazon(self, page, sku):
-        variations_element = await page.querySelectorAll('[id^="variation_"]')
+        variations_element = await page.evaluate("""
+        () => {
+            let variationsElement = document.querySelectorAll('[id^="variation_"]')
+            return Array.from(variationsElement).map( variation =>{
+                name = variation.getAttribute('id').replace('variation_', '')
+                select = variation.querySelector('select')
+                return {
+                    name,
+                    select
+                }
+            })
+        }
+        """)
         products = list()
         variations = list()
-
         if variations_element:
             read_JSON = False
             json_string = ''
@@ -240,25 +246,29 @@ class CtrlsScraper:
             #     '() => {\n'+json_string+'\nreturn dataToReturn.dimensionToAsinMap\n'+'}'
             # )
             # variations += variations_draw.values()
-            data = await page.evaluate(
-                '() => {\n'+json_string+'\nreturn dataToReturn\n'+'}'
+            variations_data = await page.evaluate(
+                '() => {\n'+json_string+'\nreturn dataToReturn.asinVariationValues\n'+'}'
             )
+            variations += variations_data.keys()
+            if sku in variations:
+                variations.remove(sku)
+                product = await self.get_info_product(page, sku)
+                products.append(product)
+            for variation in variations:
+                await page.goto(self.url_origin.replace('sku',variation))
+                while await page.querySelector('[id="captchacharacters"]'):
+                    page.setDefaultNavigationTimeout(0)
+                    breakpoint()
+                    await page.goto(self.url_origin.replace('sku',variation))
+                    page.setDefaultNavigationTimeout(30000)
 
-            breakpoint()
-        if sku in variations:
-            variations.remove(sku)
+                product = await self.get_info_product(page, variation)
+                products.append(product)
+
+        else:
             product = await self.get_info_product(page, sku)
             products.append(product)
-        for variation in variations:
-            await page.goto(self.url_origin.replace('sku',variation))
-            while await page.querySelector('[id="captchacharacters"]'):
-                page.setDefaultNavigationTimeout(0)
-                breakpoint()
-                await page.goto(self.url_origin.replace('sku',variation))
-                page.setDefaultNavigationTimeout(30000)
 
-            product = await self.get_info_product(page, variation)
-            products.append(product)
         print(len(products))
         return products
 
@@ -323,17 +333,20 @@ class CtrlsScraper:
     async def scraper_pages(self, uri, country):
         profile_scraper = 'scraper'
         profile_scraper = f'{profile_scraper}_{country}'
-        async with self.sem:
-            browser, page = await MyPyppeteer(profile_scraper).connect_browser()
-            page = await browser.newPage()
-            await page.goto(uri)
-            skus = await self.get_skus_from_page(page)
-            await page.close()
-
-        products_coros = [self.get_product(sku, country) for sku in skus]
-        products_draw = await asyncio.gather(*products_coros)
         products = list()
-        for _products_ in products_draw:
-            products += _products_
-        breakpoint()
+        while True:
+            async with self.sem:
+                browser, page = await MyPyppeteer(profile_scraper).connect_browser()
+                page = await browser.newPage()
+                await page.goto(uri)
+                skus = await self.get_skus_from_page(page)
+                await page.close()
+
+            if not skus:
+                break 
+            products_coros = [self.get_product(sku, country) for sku in skus]
+            products_draw = await asyncio.gather(*products_coros)
+            for _products_ in products_draw:
+                products += _products_
+
         return products
