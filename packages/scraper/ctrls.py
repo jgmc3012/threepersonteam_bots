@@ -30,24 +30,16 @@ class CtrlsScraper:
         "-5": "CRITICAL_ERROR",
     }
     sem = asyncio.Semaphore(3)
-    url_origin = {
-        # "Ebay": f"https://www.ebay.com/itm/{sku}",
-        "Amazon": f"https://www.amazon.com/dp/sku",
-    }
-    async def get_product(self, sku:str, country='usa', provider='Amazon'):
+    url_origin = "https://www.amazon.com/dp/sku"
+
+    async def get_product(self, sku:str, country='usa'):
         profile_scraper = 'scraper'
         profile_scraper = f'{profile_scraper}_{country}'
         async with self.sem:
             browser, page = await MyPyppeteer(profile_scraper).connect_browser()
             page = await browser.newPage()
 
-            cost_product = await self.switch(provider, sku, page)
-            await page.close()
-            return cost_product
-
-    async def switch(self, provider, sku:str, page):
-        if provider in self.url_origin:
-            url = self.url_origin[provider].replace('sku',sku)
+            url = self.url_origin.replace('sku',sku)
             logging.getLogger("log_print_full").debug(f"URL: {url}")
             await page.goto(url)
             while await page.querySelector('[id="captchacharacters"]'):
@@ -55,17 +47,12 @@ class CtrlsScraper:
                 breakpoint()
                 await page.goto(url)
 
-            if (provider == 'Amazon'):
-                res = await self.get_product_amazon(page, sku)
+            products = await self.get_product_amazon(page, sku)
 
-            return self.wrap_contex(res)
+            await page.close()
+            return products
 
-        else:
-            logging.getLogger("log_print_full").error(
-                f"La URL no corresponde con ninguno de los scraper de tiendas({self.url_origin})"
-            )
-
-    async def get_info_product(self, page):
+    async def get_info_product(self, page, sku):
         """
         Esta funcion obtenie los datos del producto de la interfaz del usuario, si
         el elemento con el precio no existe, asumimos que el producto
@@ -221,6 +208,7 @@ class CtrlsScraper:
     async def get_product_amazon(self, page, sku):
         variations_element = await page.querySelectorAll('[id^="variation_"]')
         products = list()
+        variations = list()
         if variations_element:
             read_JSON = False
             json_string = ''
@@ -234,22 +222,26 @@ class CtrlsScraper:
                         break
                 elif 'twister-js-init-dpx-data' in line:
                     read_JSON = True
-            
+
             variations_draw = await page.evaluate(
                 '() => {\n'+json_string+'\nreturn dataToReturn.dimensionToAsinMap\n'+'}'
             )
-        
-        if variations_draw:
-            variations = list(variations_draw.values())
-            variations.remove(sku)
-        else:
-            variations = list()
 
-        product = await self.get_info_product(page)
+            variations.append(variations_draw.values())
+            variations.remove(sku)
+
+
+        product = await self.get_info_product(page, sku)
         products.append(product)
         for variation in variations:
-            await page.goto(self.url_origin['Amazon'].replace('sku',variation))
-            product = await self.get_info_product(page)
+            await page.goto(self.url_origin.replace('sku',variation))
+            while await page.querySelector('[id="captchacharacters"]'):
+                page.setDefaultNavigationTimeout(0)
+                breakpoint()
+                await page.goto(self.url_origin.replace('sku',variation))
+                page.setDefaultNavigationTimeout(30000)
+
+            product = await self.get_info_product(page, variation)
             products.append(product)
         print(len(products))
         return products
@@ -285,36 +277,6 @@ class CtrlsScraper:
         else:
             return value_default
 
-    def wrap_contex(self, products: list) -> dict:
-        if products:
-            for product in products:
-                price_product = int(product.get("price").get("product"))
-                price_shipping = int(product.get("price").get("shipping"))
-                if (price_product < 0) or (price_shipping < 0):
-                    price_product_str = str(price_product)
-                    price_shipping_str = str(price_shipping)
-
-                    level = (
-                        price_product_str
-                        if price_product < price_shipping
-                        else price_shipping_str
-                    )
-                    msg = f'PRODUCTO {product.get("sku")} {self.message[level]}.'
-                    if level == self.CRITICAL_ERROR:
-                        logging.getLogger("log_print").error(msg)
-                    else:
-                        logging.getLogger("log_print").warning(msg)
-
-                    with open("storage/products_review_amazon.log", "a") as f:
-                        f.write(
-                            f'{self.message[level]} - item: {product["price"]} - URL: https://www.amazon.com/dp/{product.get("sku")}\n'
-                        )
-                    print(product)
-                    return {"ok": False, "msg": msg, "data":product}
-            return {"ok": True, "data": products}
-        else:
-            return {"ok": False, "msg": self.PRODUCT_NOT_FOUNT}
-
     def weight_converter(self, count, unit):
         converter = {
             'ounces': 28.3495,
@@ -333,5 +295,29 @@ class CtrlsScraper:
         }
         return converter[unit]*count
 
-    def get_skus_from_page(self, page):
-        pass
+    async def get_skus_from_page(self, page):
+        skus_draw = await page.evaluate("""
+            () => {
+                skus_elements = document.querySelectorAll('.s-result-list > div')
+                return Array.from(skus_elements).map( sku => sku.getAttribute('data-asin'))
+            }
+        """)        
+        return [sku for sku in skus_draw if sku]
+
+    async def scraper_pages(self, uri, country):
+        profile_scraper = 'scraper'
+        profile_scraper = f'{profile_scraper}_{country}'
+        async with self.sem:
+            browser, page = await MyPyppeteer(profile_scraper).connect_browser()
+            page = await browser.newPage()
+            await page.goto(uri)
+            skus = await self.get_skus_from_page(page)
+            await page.close()
+
+        products_coros = [self.get_product(sku, country) for sku in skus]
+        products_draw = await asyncio.gather(*products_coros)
+        products = list()
+        for _products_ in products_draw:
+            products += _products_
+        breakpoint()
+        return products
