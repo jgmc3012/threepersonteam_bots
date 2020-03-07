@@ -44,7 +44,6 @@ class CtrlsScraper:
             await page.goto(url)
             while await page.querySelector('[id="captchacharacters"]'):
                 page.setDefaultNavigationTimeout(0)
-                breakpoint()
                 await page.goto(url)
 
             products = await self.get_product_amazon(page, sku)
@@ -63,23 +62,36 @@ class CtrlsScraper:
         pattern_price_shipping = r'(\d+\.?\d*) [Ss]hipping'
 
         price_element = await page.querySelector("#priceblock_ourprice")
-        price_draw = await MyPyppeteer().get_property(
-            price_element, "innerText", page
-        )
-        price_draw = price_draw if price_draw else ''
-        match = re.findall(pattern_price, price_draw)
-        if not match:
-            price_product_str = self.PRICE_NOT_FOUND
-        else:
-            price_product_str = match[len(match) - 1]
+        if price_element:
+            price_product_draw = await MyPyppeteer().get_property(
+                price_element, "innerText", page
+            )
 
-        price_shipping_element = await page.querySelector(
-            "#ourprice_shippingmessage"
+            price_shipping_element = await page.querySelector(
+                "#ourprice_shippingmessage"
+            )
+            price_shipping_draw = await MyPyppeteer().get_property(
+                price_shipping_element, "innerText", page
+            )
+            price_shipping_draw = price_shipping_draw if price_shipping_draw else ''
+
+        else:
+            price_product_element = await page.querySelector("#buyNewSection")
+
+            # Este elemento contine MUCHA mas informacion que el precio de envio
+            # es la unica manera que haya, puede que conlleve a Bugs
+            price_shipping_element = await page.querySelector("#buyNewInner")
+            if price_product_element and price_shipping_element:
+                price_product_draw = await MyPyppeteer().get_property(
+                    price_product_element, "innerText", page
+                )
+                price_shipping_draw = await MyPyppeteer().get_property(
+                    price_shipping_element, "innerText", page
+                )
+
+        price_product_str = self.price_or_err(
+            pattern_price, price_product_draw, self.PRICE_NOT_FOUND
         )
-        price_shipping_draw = await MyPyppeteer().get_property(
-            price_shipping_element, "innerText", page
-        )
-        price_shipping_draw = price_shipping_draw if price_shipping_draw else ''
         price_shipping_str = self.price_or_err(
             pattern_price_shipping, price_shipping_draw, self.PRICE_NOT_FOUND
         )
@@ -209,6 +221,7 @@ class CtrlsScraper:
         variations_element = await page.querySelectorAll('[id^="variation_"]')
         products = list()
         variations = list()
+
         if variations_element:
             read_JSON = False
             json_string = ''
@@ -223,16 +236,19 @@ class CtrlsScraper:
                 elif 'twister-js-init-dpx-data' in line:
                     read_JSON = True
 
-            variations_draw = await page.evaluate(
-                '() => {\n'+json_string+'\nreturn dataToReturn.dimensionToAsinMap\n'+'}'
+            # variations_draw = await page.evaluate(
+            #     '() => {\n'+json_string+'\nreturn dataToReturn.dimensionToAsinMap\n'+'}'
+            # )
+            # variations += variations_draw.values()
+            data = await page.evaluate(
+                '() => {\n'+json_string+'\nreturn dataToReturn\n'+'}'
             )
 
-            variations.append(variations_draw.values())
+            breakpoint()
+        if sku in variations:
             variations.remove(sku)
-
-
-        product = await self.get_info_product(page, sku)
-        products.append(product)
+            product = await self.get_info_product(page, sku)
+            products.append(product)
         for variation in variations:
             await page.goto(self.url_origin.replace('sku',variation))
             while await page.querySelector('[id="captchacharacters"]'):
@@ -246,7 +262,7 @@ class CtrlsScraper:
         print(len(products))
         return products
 
-    def price_or_err(self, pattern: str, string, value_default, pos=0) -> str:
+    def price_or_err(self, pattern: str, string, value_default, pos=-1) -> str:
         """
         Este funcion recibe un patron con AL MENOS un grupo, una cadena de
         caracteres y una posicion del grupo que se desea retornar.
