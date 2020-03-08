@@ -91,15 +91,16 @@ class CtrlsScraper:
         price_product_str = self.price_or_err(
             pattern_price, price_product_draw, self.PRICE_NOT_FOUND
         )
-        price_shipping_str = self.price_or_err(
+        if re.match(' not ship ', price_shipping_draw):
+            price_shipping_str = self.PRODUCT_NOT_SHIP
+        else:
+            price_shipping_str = self.price_or_err(
             pattern_price_shipping, price_shipping_draw, self.PRICE_NOT_FOUND
-        )
-        if price_shipping_str == self.PRICE_NOT_FOUND:
-            price_shipping_str = self.price_shipping_or_err(
-                price_shipping_draw, "0"
             )
-        if re.match(' no ship ', price_shipping_draw):
-            price_shipping_str = self.PRICE_NOT_FOUND 
+            if price_shipping_str == self.PRICE_NOT_FOUND:
+                price_shipping_str = self.price_shipping_or_err(
+                    price_shipping_draw, self.PRICE_NOT_FOUND
+                )
 
         price_product = float(price_product_str)
         price_shipping = float(price_shipping_str)
@@ -306,7 +307,7 @@ class CtrlsScraper:
             products.append(product)
 
         for product in products:
-            print(product['title'], product['price'], product['sku'])
+            logging.getLogger("log_print_full").info(product['title'], product['price'], product['sku'])
         return products
 
     def price_or_err(self, pattern: str, string, value_default, pos=-1) -> str:
@@ -326,7 +327,7 @@ class CtrlsScraper:
             else:
                 return value_default
         except Exception as e:
-            print(e)
+            logging.getLogger("log_print_full").error(e)
             return self.CRITICAL_ERROR
 
     def price_shipping_or_err(self, string, value_default) -> str:
@@ -388,6 +389,6 @@ class CtrlsScraper:
             products_draw = await asyncio.gather(*products_coros)
             for _products_ in products_draw:
                 products += _products_
-        print(datetime.now()-time_start)
-        print(datetime.now())
+        logging.getLogger("log_print_full").info(datetime.now()-time_start)
+        logging.getLogger("log_print_full").info(datetime.now())
         return products
