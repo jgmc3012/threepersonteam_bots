@@ -3,6 +3,7 @@ import re
 import logging
 import json
 import asyncio
+from datetime import datetime
 
 class CtrlsScraper:
     """
@@ -30,25 +31,28 @@ class CtrlsScraper:
         "-5": "CRITICAL_ERROR",
     }
     sem = asyncio.Semaphore(3)
+    my_pypperteer = None
     url_origin = "https://www.amazon.com/dp/sku?psc=1"
 
+    async def init_my_pypperteer(self, profile:str):
+        if not self.my_pypperteer:
+            self.my_pypperteer = MyPyppeteer(profile)
+            await self.my_pypperteer.connect_browser()
+            await self.my_pypperteer.init_pool_pages(self.sem._value)
+        
     async def get_product(self, sku:str, country='usa'):
         profile_scraper = 'scraper'
         profile_scraper = f'{profile_scraper}_{country}'
+        await self.init_my_pypperteer(profile_scraper)
         async with self.sem:
-            browser, page = await MyPyppeteer(profile_scraper).connect_browser()
-            page = await browser.newPage()
+            id_page, page = self.my_pypperteer.get_page_pool()
 
             url = self.url_origin.replace('sku',sku)
             logging.getLogger("log_print_full").debug(f"URL: {url}")
-            await page.goto(url)
-            while await page.querySelector('[id="captchacharacters"]'):
-                page.setDefaultNavigationTimeout(0)
-                await page.goto(url)
-
+            await self.goto(url,page)
             products = await self.get_product_amazon(page, sku)
 
-            await page.close()
+            self.my_pypperteer.close_page_pool(id_page)
         return products
 
     async def get_info_product(self, page, sku):
@@ -138,20 +142,32 @@ class CtrlsScraper:
         attributes_draw = await page.evaluate(
             """
                 () => {
-                    let attributes = {}
-
-                    const getAttributeBySelector = (selector, attributes) => {
-                        rows = document.querySelectorAll(selector)
+                    const getAttributesByList = (attributes, selector) => {
+                        let rows = document.querySelectorAll(selector)
                         rows.forEach(row => {
-                        key = row.children[0].innerText.replace(/ /g, '_').toLowerCase()
-                        value = row.children[1].innerText
-                        attributes[key] = value
+                            row = row.innerText.split(':')
+                            if (row.length>1) {
+                                let key = row[0].replace(/ /g, '_').toLowerCase()
+                                let value = row[1]
+                                attributes[key] = value
+                            }
+                        });
+                        return attributes
+                    }
+                    const getAttributesByTable = (attributes) => {
+                        let rows = document.querySelectorAll('#prodDetails tr')
+                        rows.forEach(row => {
+                            let key = row.children[0].innerText.replace(/ /g, '_').toLowerCase()
+                            let value = row.children[1].innerText
+                            attributes[key] = value
                         });
                         return attributes
                     }
 
-                    attributes = getAttributeBySelector('#prodDetails tr', attributes)
-
+                    let attributes = {}
+                    attributes = getAttributesByTable(attributes)
+                    attributes = getAttributesByList(attributes, '#detail-bullets li')
+                    attributes = getAttributesByList(attributes, '#detailBullets li')
                     return attributes
                 }
             """
@@ -190,7 +206,7 @@ class CtrlsScraper:
                         dimensions = _dimensions_
 
             elif 'weight' in attribute_key:
-                weight_draw = attributes_draw[attribute_key].split(' ')
+                weight_draw = attributes_draw[attribute_key].strip().split(' ')
                 _weight_ = self.weight_converter(float(weight_draw[0]), weight_draw[1].lower())
 
                 if weight < _weight_:
@@ -202,15 +218,41 @@ class CtrlsScraper:
             elif attribute_key not in ('customer_reviews', 'best_sellers_rank'):
                 attributes[attribute_key] = attributes_draw[attribute_key]
         # ATTRIBUTES #END
+        # CATEGORY
+        categories = await page.evaluate("""
+            _ => {
+                category = document.querySelector('#wayfinding-breadcrumbs_feature_div')
+                if (category) {
+                    return category.innerText.split('›')
+                }
+            }
+        """)
+        if categories:
+            category_root = categories[0].strip()
+            category_child = categories[-1].strip()
+        else:
+            category_root = None
+            category_child = None
+        # CATEGORY #END
+
         product = {
             "sku": sku,
             "title": title,
             "description": description,
             "attributes": attributes,
             "images": images,
+            "category": {"root": category_root, "child": category_child},
             "price": {"product": price_product, "shipping": price_shipping},
         }
         return product
+
+    async def goto(self, url:str, page):
+        await page.goto(url)
+        while await page.querySelector('[id="captchacharacters"]'):
+            page.setDefaultNavigationTimeout(0)
+            breakpoint()
+            await page.goto(url)
+            page.setDefaultNavigationTimeout(30000)
 
     async def get_product_amazon(self, page, sku):
         variations_element = await page.evaluate("""
@@ -255,13 +297,7 @@ class CtrlsScraper:
                 product = await self.get_info_product(page, sku)
                 products.append(product)
             for variation in variations:
-                await page.goto(self.url_origin.replace('sku',variation))
-                while await page.querySelector('[id="captchacharacters"]'):
-                    page.setDefaultNavigationTimeout(0)
-                    breakpoint()
-                    await page.goto(self.url_origin.replace('sku',variation))
-                    page.setDefaultNavigationTimeout(30000)
-
+                await self.goto(self.url_origin.replace('sku',variation),page)
                 product = await self.get_info_product(page, variation)
                 products.append(product)
 
@@ -269,7 +305,8 @@ class CtrlsScraper:
             product = await self.get_info_product(page, sku)
             products.append(product)
 
-        print(len(products))
+        for product in products:
+            print(product['title'], product['price'], product['sku'])
         return products
 
     def price_or_err(self, pattern: str, string, value_default, pos=-1) -> str:
@@ -331,16 +368,19 @@ class CtrlsScraper:
         return [sku for sku in skus_draw if sku]
 
     async def scraper_pages(self, uri, country):
+        time_start = datetime.now()
         profile_scraper = 'scraper'
         profile_scraper = f'{profile_scraper}_{country}'
         products = list()
+        number_page = 0
         while True:
+            number_page += 1
+            await self.init_my_pypperteer(profile_scraper)
             async with self.sem:
-                browser, page = await MyPyppeteer(profile_scraper).connect_browser()
-                page = await browser.newPage()
-                await page.goto(uri)
+                id_page, page = self.my_pypperteer.get_page_pool()
+                await self.goto(f'{uri}&page={number_page}', page)
                 skus = await self.get_skus_from_page(page)
-                await page.close()
+                self.my_pypperteer.close_page_pool(id_page)
 
             if not skus:
                 break 
@@ -348,5 +388,6 @@ class CtrlsScraper:
             products_draw = await asyncio.gather(*products_coros)
             for _products_ in products_draw:
                 products += _products_
-
+        print(datetime.now()-time_start)
+        print(datetime.now())
         return products

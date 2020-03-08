@@ -17,7 +17,7 @@ class ProductModel():
         'provider_sku', # :str, (max_length=50, unique=True)
         'provider_link', # :str, (max_length=255, unique=True)
         'image', # :str, (max_length=255)
-        # category = models.ForeignKey(Category, on_delete=models.CASCADE)
+        'category', # models.ForeignKey(Category, on_delete=models.CASCADE)
         'description' # :str, (null=True, default=None)
         'quantity' # :int,
         'last_update', # DateTimeField(default=timezone.localtime)

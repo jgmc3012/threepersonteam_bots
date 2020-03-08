@@ -26,7 +26,7 @@ class MyPyppeteer(metaclass=SingletonClass):
         self.profile = profile
         self.ws = None
         self.rotate_enabled = False
-
+        self.pool = {'availables':list()}
         self.flags = [
             '--window-size=1400,980',
             '--no-default-browser-check',
@@ -64,6 +64,26 @@ class MyPyppeteer(metaclass=SingletonClass):
                 self._yaml = yaml.load(yamlfile)
                 self._yaml = self._yaml if self._yaml else {}
         return self._yaml
+
+    async def init_pool_pages(self, number_pages:int)->dict:
+        if not self.browser:
+            await self.connect_browser()
+        for i in range(number_pages):
+            self.pool[i] = await self.browser.newPage()
+            self.pool['availables'].append(i)
+        return self.pool
+    
+    def get_page_pool(self)->tuple:
+        """
+        Return:
+            - id_page: El id de la pagina que se retorna(esta valor debe ser paso en el close_page_pool)
+            - page: Una pagina activa del browser
+        """
+        page_id = self.pool['availables'].pop()
+        return page_id, self.pool[page_id]
+
+    def close_page_pool(self, page_id):
+        self.pool['availables'].insert(0, page_id)
 
     def get_ws_profile(self):
         return self.yaml.get(self.profile)
