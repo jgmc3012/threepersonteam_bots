@@ -214,7 +214,7 @@ class CtrlsScraper:
                     weight = _weight_
 
             elif 'asin' in attribute_key:
-                sku = attributes_draw[attribute_key]
+                sku = attributes_draw[attribute_key].strip()
 
             elif attribute_key not in ('customer_reviews', 'best_sellers_rank'):
                 attributes[attribute_key] = attributes_draw[attribute_key]
@@ -307,7 +307,7 @@ class CtrlsScraper:
             products.append(product)
 
         for product in products:
-            logging.getLogger("log_print_full").info(product['title'], product['price'], product['sku'])
+            logging.getLogger("log_print_full").info(f"{product['title']} {product['price']} {product['sku']}")
         return products
 
     def price_or_err(self, pattern: str, string, value_default, pos=-1) -> str:
@@ -389,6 +389,7 @@ class CtrlsScraper:
             products_draw = await asyncio.gather(*products_coros)
             for _products_ in products_draw:
                 products += _products_
-        logging.getLogger("log_print_full").info(datetime.now()-time_start)
-        logging.getLogger("log_print_full").info(datetime.now())
+        logging.getLogger("log_print_full").info(f'{datetime.now()-time_start}')
+        logging.getLogger("log_print_full").info(f'{datetime.now()}')
+        breakpoint()
         return products
