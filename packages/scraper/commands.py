@@ -1,6 +1,8 @@
 from cleo import Command
 from packages.core.utils.app_loop import AppLoop
+from packages.core.utils.config import Config
 from .ctrls import CtrlsScraper
+from .models import AttributeModel
 
 class AllCommands:
     class ScraperProduct(Command):

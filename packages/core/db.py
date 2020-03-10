@@ -190,6 +190,7 @@ class DataBase:
         res = None
         arr_final_query = await self.prepare_big_insert(arr_values, query_schema)
         for final_query in arr_final_query:
+            breakpoint()
             res = await self.execute(
                 final_query
             )  # todo agregar a execute_core sending all params
@@ -248,7 +249,7 @@ class DataBase:
         query = f'{query[:-1]};'
         values = [tuple(item.values()) for item in items]
         return await (
-            await ConnectionsDB().get_connection("treepersonteam")
+            await ConnectionsDB().get_connection("threepersonteam")
         ).execute_big_insert(values, query)
 
     async def close(self):

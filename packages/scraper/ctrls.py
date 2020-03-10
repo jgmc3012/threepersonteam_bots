@@ -4,20 +4,9 @@ import logging
 import json
 import asyncio
 from datetime import datetime
+from .models import ProductModel, AttributeModel
 
 class CtrlsScraper:
-    """
-    - Title #Done
-    - Images #Done
-    - Description #Done_ENG
-    - Attribute
-    - sku
-    - variations
-    - color
-    - brand
-    - dimesions
-    - weight
-    """
     PRODUCT_NOT_AVAILABLE = "-1"
     PRICE_NOT_FOUND = "-2"
     PRODUCT_NOT_FOUNT = "-3"
@@ -91,7 +80,7 @@ class CtrlsScraper:
         price_product_str = self.price_or_err(
             pattern_price, price_product_draw, self.PRICE_NOT_FOUND
         )
-        if re.match(' not ship ', price_shipping_draw):
+        if ' not ship ' in price_shipping_draw:
             price_shipping_str = self.PRODUCT_NOT_SHIP
         else:
             price_shipping_str = self.price_or_err(
@@ -188,7 +177,7 @@ class CtrlsScraper:
             attributes[name] = value
 
         for attribute_key in attributes_draw:
-            if 'dimensions' in attribute_key:
+            if 'dimensiones' in attribute_key:
                 _dimensions_ = dict()
                 # Las dimensiones vienen en este formato "7.1 x 4 x 1.9 inches"
                 dimensions_draw = attributes_draw[attribute_key].split(';')
@@ -206,7 +195,7 @@ class CtrlsScraper:
                     if (dimensions['x']*dimensions['y']*dimensions['z']) < (_dimensions_['x']*_dimensions_['y']*_dimensions_['z']):
                         dimensions = _dimensions_
 
-            elif 'weight' in attribute_key:
+            elif 'peso_' in attribute_key:
                 weight_draw = attributes_draw[attribute_key].strip().split(' ')
                 _weight_ = self.weight_converter(float(weight_draw[0]), weight_draw[1].lower())
 
@@ -235,7 +224,18 @@ class CtrlsScraper:
             category_root = None
             category_child = None
         # CATEGORY #END
-
+        # QUANTITY
+        quantity = await page.evaluate("""
+            () => {
+                quantity_elemet = document.querySelector("#quantity")
+                if (quantity_elemet) {
+                    return quantity_elemet.children[quantity_elemet.childElementCount-1].value
+                }
+            }
+        """)
+        if  quantity:
+            quantity = int(quantity)
+        # QUANTITY #END
         product = {
             "sku": sku,
             "title": title,
@@ -244,15 +244,20 @@ class CtrlsScraper:
             "images": images,
             "category": {"root": category_root, "child": category_child},
             "price": {"product": price_product, "shipping": price_shipping},
+            "dimensions": dimensions,
+            "weight":weight,
+            "quantity": quantity,
         }
         return product
 
     async def goto(self, url:str, page):
         await page.goto(url)
-        while await page.querySelector('[id="captchacharacters"]'):
+        while True:
+            input_chatpcha = await page.querySelector('[id="captchacharacters"]')
+            if not input_chatpcha:
+                break
             page.setDefaultNavigationTimeout(0)
-            breakpoint()
-            await page.goto(url)
+            input('Una vez solventado el chatpcha presione Enter.')
             page.setDefaultNavigationTimeout(30000)
 
     async def get_product_amazon(self, page, sku):
@@ -335,8 +340,7 @@ class CtrlsScraper:
         Esta funcion recibe un string donde se buscara el texto 'FREE Shipping,\
         si lo encuentra retorna 0, de lo contrario retorna value_default.
         """
-        match = re.search("FREE Shipping", string)
-        if match:
+        if 'FREE Shipping' in string or 'Envío GRATIS' in string:
             return "0"
         else:
             return value_default
@@ -389,7 +393,29 @@ class CtrlsScraper:
             products_draw = await asyncio.gather(*products_coros)
             for _products_ in products_draw:
                 products += _products_
+                await self.insert_database(_products_)
         logging.getLogger("log_print_full").info(f'{datetime.now()-time_start}')
         logging.getLogger("log_print_full").info(f'{datetime.now()}')
-        breakpoint()
         return products
+    
+    async def insert_database(self, products_draw:list):
+        products = [{
+            'title':product['title'], # :str, (max_length=60)
+            'cost_price':product['price']['product'], # :float, (null=True)
+            'ship_price':product['price']['shipping'], # :float,(null=True)
+            'provider_sku':product['sku'], # :str, (max_length=50, unique=True)
+            'provider_link':self.url_origin.replace('sku',product['sku']), # :str, (max_length=255, unique=True)
+            'image':product['images'][0].replace('.jpg', '._AC_UY150_ML3_.jpg'), # :liststr, (max_length=255)
+            'category_name':product['category']['child'], # models.CharField(max_length=60) #"Temporal." Para el scraper de amazon
+            'description':product['description'], # :str, (null=True, default=None)
+            'quantity':product['quantity'], # :int,
+            'last_update': datetime.now(), # DateTimeField(default=timezone.localtime)
+            'height': product['dimensions'].get("x"), # models.FloatField(default=None, null=True)
+            'width': product['dimensions'].get("y"), # models.FloatField(default=None, null=True)
+            'length': product['dimensions'].get("z"), # models.FloatField(default=None, null=True)
+            'weight': product['weight'] if product['weight'] else None, # models.FloatField(default=None, null=True)
+        } for product in products_draw]
+        await ProductModel().insert(products)
+        attributes = {product['sku']:product['attributes'] for product in products_draw}
+
+        await AttributeModel().insert(attributes)
