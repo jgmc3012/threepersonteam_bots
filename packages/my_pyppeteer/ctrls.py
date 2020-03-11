@@ -26,7 +26,7 @@ class MyPyppeteer(metaclass=SingletonClass):
         self.profile = profile
         self.ws = None
         self.rotate_enabled = False
-
+        self.pool = {'availables':list()}
         self.flags = [
             '--window-size=1400,980',
             '--no-default-browser-check',
@@ -64,6 +64,32 @@ class MyPyppeteer(metaclass=SingletonClass):
                 self._yaml = yaml.load(yamlfile)
                 self._yaml = self._yaml if self._yaml else {}
         return self._yaml
+
+    async def init_pool_pages(self, number_pages:int)->dict:
+        if not self.browser:
+            await self.connect_browser()
+        for i in range(number_pages):
+            self.pool[i] = await self.browser.newPage()
+            self.pool['availables'].append(i)
+        return self.pool
+
+    async def change_page(self, page):
+        for page_index in self.pool:
+            if (page_index != 'availables') and (self.pool.get(page_index) == page):
+                self.pool[page_index] = await self.browser.newPage()
+                return self.pool[page_index]
+
+    def get_page_pool(self)->tuple:
+        """
+        Return:
+            - id_page: El id de la pagina que se retorna(esta valor debe ser paso en el close_page_pool)
+            - page: Una pagina activa del browser
+        """
+        page_id = self.pool['availables'].pop()
+        return page_id, self.pool[page_id]
+
+    def close_page_pool(self, page_id):
+        self.pool['availables'].insert(0, page_id)
 
     def get_ws_profile(self):
         return self.yaml.get(self.profile)
@@ -156,7 +182,8 @@ class MyPyppeteer(metaclass=SingletonClass):
     async def get_profile_dir(self):
         profile_dir = ''
         if platform == "linux" or platform == "linux2":  # linux
-            paths = glob(f'{Path.home()}/.config/google-chrome/*/Preferences')
+            # paths = glob(f'{Path.home()}/.config/google-chrome/*/Preferences')
+            paths = glob(f'{Path.home()}/.config/chromium/*/Preferences')
         elif platform == "darwin":  # mac
             paths = glob(f'{Path.home()}/Library/Application Support/Google/Chrome/*/Preferences')  # ruta
         elif platform == "win32":  # Windows...
