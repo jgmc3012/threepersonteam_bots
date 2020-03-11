@@ -3,7 +3,7 @@ from packages.core.utils.config import Config
 
 class ProductModel():
     """
-        Modelo de abtraccion para los productos en la base de datos.
+        Modelo de abstraccion para los productos en la base de datos.
         Solo los campos que para el scraper son relevantes.
     """
 
@@ -25,24 +25,25 @@ class ProductModel():
         'length', # models.FloatField(default=None, null=True)
         'weight', # models.FloatField(default=None, null=True)
         ]
-        self.keys = ['provider_sku']
+        self.keys = ['cost_price', 'ship_price', 'quantity', 'last_update']
+
 
     async def insert(self, products:list):
         return await (
             await ConnectionsDB().get_connection(self.name_connection)
-        ).insert(products, 'store_product', self.keys)
+        ).insert(products, f'store_product', self.keys)
 
 class AttributeModel():
     """
-        Modelo de abtraccion para los atributos en la base de datos.
+        Modelo de abstraccion para los atributos en la base de datos.
     """
 
     def __init__(self):
         self.name_connection = 'threepersonteam'
         self.keys = ['id']
-
     async def insert(self, attributes_draw:dict):
-        query = f"SELECT sku,id from store_product WHERE sku IN ({','.join(attributes_draw.keys())})"
+        skus = [f'"{sku}"' for sku in attributes_draw.keys()]
+        query = f"SELECT provider_sku AS sku,id from store_product WHERE provider_sku IN ({','.join(skus)})"
         skus_and_ids = await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
         attributes = list()
         for sku_and_id in skus_and_ids:
@@ -51,14 +52,40 @@ class AttributeModel():
             for attr in attributes_draw[sku]:
                 attribute = {
                     "id_meli" : attr,
-                    "value" : attributes_draw[attr],
+                    "value" : attributes_draw[sku][attr],
                     "product_id" : id
                 }
                 attributes.append(attribute)
         return await (
             await ConnectionsDB().get_connection(self.name_connection)
-        ).insert(attributes, 'store_attributes', self.keys)
+        ).insert(attributes, 'store_attribute', self.keys)
 
     async def select(self):
         query = f"SELECT * from store_product"
         await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
+
+class PictureModel():
+    """
+        Modelo de abstraccion para los atributos en la base de datos.
+    """
+
+    def __init__(self):
+        self.name_connection = 'threepersonteam'
+        self.keys = ['id']
+    async def insert(self, pictures_draw:dict):
+        skus = [f'"{sku}"' for sku in pictures_draw.keys()]
+        query = f"SELECT provider_sku AS sku,id from store_product WHERE provider_sku IN ({','.join(skus)})"
+        skus_and_ids = await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
+        pictures = list()
+        for sku_and_id in skus_and_ids:
+            sku = sku_and_id['sku']
+            id = sku_and_id['id']
+            for image in pictures_draw[sku]:
+                picture = {
+                    "src" : image,
+                    "product_id" : id
+                }
+                pictures.append(picture)
+        return await (
+            await ConnectionsDB().get_connection(self.name_connection)
+        ).insert(pictures, 'store_picture', self.keys)

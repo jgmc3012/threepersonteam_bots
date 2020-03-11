@@ -72,7 +72,13 @@ class MyPyppeteer(metaclass=SingletonClass):
             self.pool[i] = await self.browser.newPage()
             self.pool['availables'].append(i)
         return self.pool
-    
+
+    async def change_page(self, page):
+        for page_index in self.pool:
+            if (page_index != 'availables') and (self.pool.get(page_index) == page):
+                self.pool[page_index] = await self.browser.newPage()
+                return self.pool[page_index]
+
     def get_page_pool(self)->tuple:
         """
         Return:

@@ -190,7 +190,7 @@ class DataBase:
         res = None
         arr_final_query = await self.prepare_big_insert(arr_values, query_schema)
         for final_query in arr_final_query:
-            breakpoint()
+            # breakpoint()
             res = await self.execute(
                 final_query
             )  # todo agregar a execute_core sending all params
@@ -241,7 +241,7 @@ class DataBase:
         table: El nombre de la tabla donde se insertaran los registros
         updates: Una lista con el nombre de los campos a actualizar(Si pasas solo un key este registro se ignora.)
         """
-        fields = ', '.join(items[0].keys())
+        fields = ', '.join([f"`{field}`" for field in items[0].keys()])
         query = f"INSERT INTO {table} ({fields}) VALUES"
         query = query + ' {} ON DUPLICATE KEY UPDATE'
         for column in updates:
