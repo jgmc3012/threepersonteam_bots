@@ -282,9 +282,17 @@ class CtrlsScraper:
         while True:
             logging.getLogger("log_print_full").debug(f"URL: {url}")
             input_chatpcha = await page.querySelector('[id="captchacharacters"]')
+            img = await page.evaluate("""
+                () => {
+                    img = document.querySelector('form img')
+                    return img.src
+                }
+            """)
+            await page.click(input_chatpcha)
             if not input_chatpcha:
                 break
-            input('Una vez solventado el chatpcha presione Enter.')
+            value_chatpcha = input(f'Ingrese la solucion del chatpcha {img}')
+            await page.keyboard.type(value_chatpcha)
             page = await self.my_pypperteer.change_page(page)
             await page.goto(url)
 
