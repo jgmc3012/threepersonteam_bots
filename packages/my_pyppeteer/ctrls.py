@@ -26,6 +26,7 @@ class MyPyppeteer(metaclass=SingletonClass):
         self.profile = profile
         self.ws = None
         self.rotate_enabled = False
+        self.TimeoutDefault = 0
         self.pool = {'availables':list()}
         self.flags = [
             '--window-size=1400,980',
@@ -70,13 +71,16 @@ class MyPyppeteer(metaclass=SingletonClass):
             await self.connect_browser()
         for i in range(number_pages):
             self.pool[i] = await self.browser.newPage()
+            self.pool[i].setDefaultNavigationTimeout(self.TimeoutDefault)
             self.pool['availables'].append(i)
         return self.pool
 
     async def change_page(self, page):
         for page_index in self.pool:
             if (page_index != 'availables') and (self.pool.get(page_index) == page):
+                await page.close()
                 self.pool[page_index] = await self.browser.newPage()
+                self.pool[page_index].setDefaultNavigationTimeout(self.TimeoutDefault)
                 return self.pool[page_index]
 
     def get_page_pool(self)->tuple:
