@@ -26,9 +26,11 @@ class AllCommands:
         scraper:amazon_scan_pages
         {--country= : country}
         {--uri= : uri}
+        {--init-page= : init-page}
         """
 
         def handle(self):
             country = self.option('country') if self.option('country') else 'usa'
+            init_page = int(self.option('init-page'))-1 if self.option('init-page') else 0
             uri = self.option('uri')
-            AppLoop().get_loop().run_until_complete(CtrlsScraper().scraper_pages(uri, country))
+            AppLoop().get_loop().run_until_complete(CtrlsScraper().scraper_pages(uri, country, init_page))

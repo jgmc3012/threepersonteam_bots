@@ -24,14 +24,19 @@ class ProductModel():
         'width', # models.FloatField(default=None, null=True)
         'length', # models.FloatField(default=None, null=True)
         'weight', # models.FloatField(default=None, null=True)
+       
         ]
         self.keys = ['cost_price', 'ship_price', 'quantity', 'last_update']
-
 
     async def insert(self, products:list):
         return await (
             await ConnectionsDB().get_connection(self.name_connection)
         ).insert(products, f'store_product', self.keys)
+
+    async def select(self):
+        query = f"SELECT provider_sku AS sku from store_product"
+        res = await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
+        return [i['sku'] for i in res]
 
 class AttributeModel():
     """
@@ -50,19 +55,17 @@ class AttributeModel():
             sku = sku_and_id['sku']
             id = sku_and_id['id']
             for attr in attributes_draw[sku]:
+                if len(attributes_draw[sku][attr].strip()) > 100 or len(attr) > 50:
+                    continue
                 attribute = {
                     "id_meli" : attr,
-                    "value" : attributes_draw[sku][attr],
+                    "value" : attributes_draw[sku][attr].strip(),
                     "product_id" : id
                 }
                 attributes.append(attribute)
         return await (
             await ConnectionsDB().get_connection(self.name_connection)
         ).insert(attributes, 'store_attribute', self.keys)
-
-    async def select(self):
-        query = f"SELECT * from store_product"
-        await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
 
 class PictureModel():
     """
