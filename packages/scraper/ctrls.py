@@ -19,7 +19,7 @@ class CtrlsScraper:
         "-4": "PRODUCT_NOT_SHIP",
         "-5": "CRITICAL_ERROR",
     }
-    sem = asyncio.Semaphore(5)
+    sem = asyncio.Semaphore(8)
     my_pypperteer = None
     url_origin = "https://www.amazon.com/-/es/dp/sku?psc=1"
 
@@ -89,8 +89,8 @@ class CtrlsScraper:
             price_shipping_element, "innerText", page
         )
 
-        price_shipping_draw = price_shipping_draw if price_shipping_draw else ''
-        price_product_draw = price_product_draw if price_product_draw else ''
+        price_shipping_draw = price_shipping_draw.replace(',','') if price_shipping_draw else ''
+        price_product_draw = price_product_draw.replace(',','') if price_product_draw else ''
 
         price_product_str = self.price_or_err(
             pattern_price, price_product_draw, self.PRICE_NOT_FOUND
@@ -197,7 +197,7 @@ class CtrlsScraper:
                 # Las dimensiones vienen en este formato "7.1 x 4 x 1.9 inches"
                 dimensions_draw = attributes_draw[attribute_key].replace(',','').split(';')
                 dimensions_draw = dimensions_draw[0].split('x')
-                if len(dimensions_draw) < 2:
+                if len(dimensions_draw) < 3:
                     continue
                 _dimensions_['x'] = float(dimensions_draw[0])
                 _dimensions_['y'] = float(dimensions_draw[1])
@@ -317,11 +317,11 @@ class CtrlsScraper:
                         break
                 elif 'twister-js-init-dpx-data' in line:
                     read_JSON = True
-
             variations_data = await page.evaluate(
                 '() => {\n'+json_string+'\nreturn dataToReturn.asinVariationValues\n'+'}'
             )
-            skus += variations_data.keys()
+            if variations_data:
+                skus += variations_data.keys()
             if sku in skus:
                 skus.remove(sku)
                 product = await self.get_info_product(page, sku)
@@ -382,7 +382,9 @@ class CtrlsScraper:
             'kilograms':2.20462,
             'kilogram':2.20462,
             'kilogramos':2.20462,
-            'kilogramo':2.20462
+            'kilogramo':2.20462,
+            'gramos':2204.62,
+            'gramo':2204.62,
         }
         return converter[unit]*count
 
@@ -425,12 +427,14 @@ class CtrlsScraper:
                 skus = await self.get_skus_from_page(page)
                 self.my_pypperteer.close_page_pool(id_page)
 
-            skus_in_database = set(await ProductModel().select())
-            skus = [sku for sku in skus if sku not in skus_in_database]
             if not skus:
                 logging.getLogger('log_print').info(f'finish Scraping in page number {number_page-1}')
                 break
             products_coros = [self.get_product(sku, country) for sku in skus]
+            skus_in_database = set(await ProductModel().select())
+            skus = [sku for sku in skus if sku not in skus_in_database]
+            if not skus:    
+                continue
             products_draw = await asyncio.gather(*products_coros)
             products = list()
             for _products_ in products_draw:

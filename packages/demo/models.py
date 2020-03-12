@@ -5,7 +5,7 @@
 #     """docstring for CtrlMod1"""
 
 #     def __init__(self):
-#         self.name_connection = 'dbcontrolcenter_yaxa_co'
+#         self.name_connection = 'threepersonteam'
 
 #     async def test(self):
 #         query = "SELECT * FROM keywords_aws limit 10"

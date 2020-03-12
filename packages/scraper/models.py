@@ -24,9 +24,9 @@ class ProductModel():
         'width', # models.FloatField(default=None, null=True)
         'length', # models.FloatField(default=None, null=True)
         'weight', # models.FloatField(default=None, null=True)
+       
         ]
         self.keys = ['cost_price', 'ship_price', 'quantity', 'last_update']
-
 
     async def insert(self, products:list):
         return await (
