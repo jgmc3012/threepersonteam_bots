@@ -43,5 +43,6 @@ class CtrlBusiness():
             await BusinessModel(seller_id).insert_products(products)
 
         products_draw = await BusinessModel(seller_id).select()
-        products = self.alfredo_form(products_draw,seller_id)
-        await BusinessModel(seller_id).insert_products(products)
+        if products_draw:
+            products = self.alfredo_form(products_draw,seller_id)
+            await BusinessModel(seller_id).insert_products(products)
