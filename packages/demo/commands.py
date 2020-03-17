@@ -9,10 +9,15 @@ class AllCommands:
     #     """
     #     Test
 
-    #     demo:demo
+    #     scraper:amazon_scan_product
+    #     {--sku= : sku}
+    #     {--country= : country}
     #     """
 
     #     def handle(self):
+    #         sku = self.option('sku')
+    #         country = self.option('country') if self.option('country') else 'usa'
+
     #         AppLoop().get_loop().run_until_complete(())
 
     #     async def handleAsync(self):

@@ -38,8 +38,7 @@ class CtrlAnicam():
             if res.get('status') == 200:
                 return {'package_id':product['id'], 'price':res['data']['price']}
             else:
-                breakpoint()
-                print('hello')
+                return {'package_id':product['id'], 'price':-1}
 
     async def shipping_by_product(self):
         while True:
