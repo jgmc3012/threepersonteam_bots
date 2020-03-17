@@ -14,7 +14,7 @@ class BusinessModel():
         shipper = await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
         id = shipper[0]['id']
         query = f"""
-            SELECT ssi.package_id, sp.cost_price, sp.ship, ssi.price AS ship_international
+            SELECT ssi.package_id, sp.cost_price, sp.ship_price, ssi.price AS ship_international
             FROM store_product AS sp
             INNER JOIN shipping_shippinginternational AS ssi ON
                 sp.id = ssi.package_id

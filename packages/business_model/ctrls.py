@@ -21,7 +21,7 @@ class CtrlBusiness():
                 'sale_price': (
                     cost_price+miami_in_out+mexico_in_out+last_mile)*utility*anicam_ticket*credit_card*meli,
                 'seller_id':seller_id,
-                'product_id': product['package_id'],
+                'product_id': _product_['package_id'],
                 'no_problem':False,
                 'sku':None,
                 'status':0,
