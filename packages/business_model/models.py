@@ -31,3 +31,24 @@ class BusinessModel():
         return await (
             await ConnectionsDB().get_connection(self.name_connection)
         ).insert(products, 'store_productforstore', ['sale_price'])
+
+    async def select_exist(self, offset:int, limit:int):
+        query = f"SELECT id, product_id FROM store_productforstore WHERE seller_id = {self.seller_id};"
+        product_exits_draw = await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
+        product_macth_id = {i['product_id']:i['id'] for i in product_exits_draw}
+        product_exits = ', '.join([str(i['product_id']) for i in product_exits_draw])
+        if not product_exits:
+            return []
+        query = f"""
+            SELECT ssi.package_id, sp.cost_price, sp.ship_price, ssi.price AS ship_international
+            FROM store_product AS sp
+            INNER JOIN shipping_shippinginternational AS ssi ON
+                sp.id = ssi.package_id
+            WHERE
+                id IN ({product_exits})
+            LIMIT {offset},{limit};
+            """
+        product_exits = await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
+        for product in product_exits:
+            product['id'] = product_macth_id[product['product_id']]
+        return product_exits
