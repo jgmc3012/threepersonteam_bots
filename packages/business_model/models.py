@@ -7,7 +7,7 @@ class BusinessModel():
         self.name_connection = 'threepersonteam'
 
     async def select(self):
-        query = f"SELECT product_id FROM store_product_for_store WHERE seller = {self.seller_id};"
+        query = f"SELECT product_id FROM store_productforstore WHERE seller = {self.seller_id};"
         product_exits_draw = await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
         product_exits = ', '.join([str(i['product_id']) for i in product_exits_draw])
         query = "SELECT id FROM shipping_shipperinternational WHERE nickname='anicam'"
