@@ -4,7 +4,7 @@ from .models import BusinessModel
 class CtrlBusiness():
     """Contiene el modelo de negocio para cada tienda en particular que se abra"""
 
-    def mx_alfredo(self, seller_id:int):
+    async def mx_alfredo(self, seller_id:int):
         products_draw = await BusinessModel(seller_id).select()
 
         products = list()
