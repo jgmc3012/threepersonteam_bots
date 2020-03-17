@@ -23,7 +23,7 @@ class BusinessModel():
                 ssi.price > 0
             """
         if product_exits:
-            query += f" AND id NOT IN ({product_exits});"
+            query += f" AND sp.id NOT IN ({product_exits});"
         else:
             query += f";"
         return await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
@@ -45,10 +45,10 @@ class BusinessModel():
             INNER JOIN shipping_shippinginternational AS ssi ON
                 sp.id = ssi.package_id
             WHERE
-                id IN ({product_exits})
+                sp.id IN ({product_exits})
             LIMIT {offset},{limit};
             """
         product_exits = await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
         for product in product_exits:
-            product['id'] = product_macth_id[product['product_id']]
+            product['id'] = product_macth_id[product['package_id']]
         return product_exits
