@@ -8,9 +8,9 @@ class AllCommands:
         Business
 
         business:get_price_products
-        {--seller_id= : seller_id}
+        {--seller-id=:seller-id}
         """
 
         def handle(self):
-            seller_id = int(self.option('seller_id'))
-            AppLoop().get_loop().run_until_complete((CtrlBusiness().mx_alfredo(seller_id))
+            seller_id = int(self.option('seller-id'))
+            AppLoop().get_loop().run_until_complete((CtrlBusiness().mx_alfredo(seller_id)))
