@@ -7,7 +7,7 @@ class BusinessModel():
         self.name_connection = 'threepersonteam'
 
     async def select(self):
-        query = f"SELECT product_id FROM store_productforstore WHERE seller = {self.seller_id};"
+        query = f"SELECT product_id FROM store_productforstore WHERE seller_id = {self.seller_id};"
         product_exits_draw = await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
         product_exits = ', '.join([str(i['product_id']) for i in product_exits_draw])
         query = "SELECT id FROM shipping_shipperinternational WHERE nickname='anicam'"
@@ -19,10 +19,13 @@ class BusinessModel():
             INNER JOIN shipping_shippinginternational AS ssi ON
                 sp.id = ssi.package_id
             WHERE
-                id NOT IN ({product_exits}) AND
-                ssi.shipper_id = {id} AND
-                ssi.price > 0;
+                ssi.shipper_id={id} AND
+                ssi.price > 0
             """
+        if product_exits:
+            query += f" AND id NOT IN ({product_exits});"
+        else:
+            query += f";"
         return await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
     async def insert_products(self, products:list):
         return await (
