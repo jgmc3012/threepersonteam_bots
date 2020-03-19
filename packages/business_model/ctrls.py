@@ -19,7 +19,7 @@ class CtrlBusiness():
                 'sale_price': ceil(
                     (cost_price+miami_in_out+mexico_in_out+last_mile)*utility*anicam_ticket*credit_card*meli),
                 'seller_id':seller_id,
-                'product_id': _product_['package_id'],
+                'product_id': _product_['item_id'],
                 'no_problem':False,
                 'sku':None,
                 'status':0,
@@ -42,7 +42,9 @@ class CtrlBusiness():
             products = func(products_draw,seller_id)
             await BusinessModel(seller_id).insert_products(products)
 
-        products_draw = await BusinessModel(seller_id).select()
+        products_draw = await BusinessModel(seller_id).select(
+            shipper='anicam' if func == self.alfredo_form else None
+        )
         if products_draw:
             products = func(products_draw,seller_id)
             await BusinessModel(seller_id).insert_products(products)
@@ -61,7 +63,7 @@ class CtrlBusiness():
             product = {
                 'sale_price': ceil(price),
                 'seller_id':seller_id,
-                'product_id': _product_['package_id'],
+                'product_id': _product_['item_id'],
                 'no_problem':False,
                 'sku':None,
                 'status':0,
