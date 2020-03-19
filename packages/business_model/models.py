@@ -14,10 +14,10 @@ class BusinessModel():
             query = "SELECT id FROM shipping_shipperinternational WHERE nickname='anicam'"
             shipper = await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
             id = shipper[0]['id']
-        query = f"""
-            SELECT ssi.package_id, sp.cost_price, sp.ship_price, ssi.price AS ship_international, sp.weight
-            FROM store_product AS sp
-        """
+        query = "SELECT sp.id AS item_id, sp.cost_price, sp.ship_price, sp.weight"
+        if shipper:
+            query += ' ,ssi.price AS ship_international'
+        query += '\n FROM store_product AS sp\n '
         if shipper:
             query += """INNER JOIN shipping_shippinginternational AS ssi ON
                 sp.id = ssi.package_id \n"""
@@ -43,7 +43,7 @@ class BusinessModel():
         if not product_exits:
             return []
         query = f"""
-            SELECT ssi.package_id, sp.cost_price, sp.ship_price, ssi.price AS ship_international, sp.weight
+            SELECT ssi.id AS item_id, sp.cost_price, sp.ship_price, ssi.price AS ship_international, sp.weight
             FROM store_product AS sp
             LEFT JOIN shipping_shippinginternational AS ssi ON
                 sp.id = ssi.package_id
@@ -53,5 +53,5 @@ class BusinessModel():
             """
         product_exits = await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
         for product in product_exits:
-            product['id'] = product_macth_id[product['package_id']]
+            product['id'] = product_macth_id[product['item_id']]
         return product_exits
