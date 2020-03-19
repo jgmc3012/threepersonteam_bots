@@ -29,7 +29,7 @@ class CtrlBusiness():
             products.append(product)
         return products
 
-    async def mx_alfredo(self, seller_id:int):
+    async def calculate_price(self, seller_id:int, func):
         rank = 0
         while True:
             rank += 1
@@ -39,10 +39,35 @@ class CtrlBusiness():
             )
             if not products_draw:
                 break
-            products = self.alfredo_form(products_draw,seller_id)
+            products = func(products_draw,seller_id)
             await BusinessModel(seller_id).insert_products(products)
 
         products_draw = await BusinessModel(seller_id).select()
         if products_draw:
-            products = self.alfredo_form(products_draw,seller_id)
+            products = func(products_draw,seller_id)
             await BusinessModel(seller_id).insert_products(products)
+
+    def dominicana_form(self, products_draw:list, seller_id:int)->list:
+        products = list()
+        for _product_ in products_draw:
+            price_for_lb = 5 #USD 
+            cost_price = _product_['cost_price'] + _product_['ship_price'] + _product_['weight'] * price_for_lb
+            meli = 1.16 #PORCENTAJE
+            utility = 1.28 #PORCENTAJE
+            survey = 1.18 #IMPUESTOS ADUANALES
+            price = cost_price
+            if _product_['cost_price'] > 199:
+                price += _product_['cost_price']*survey
+            price = price*utility*meli
+            product = {
+                'sale_price': ceil(price),
+                'seller_id':seller_id,
+                'product_id': _product_['package_id'],
+                'no_problem':False,
+                'sku':None,
+                'status':0,
+            }
+            if _product_.get('id'):
+                product['id'] = _product_.get('id')
+            products.append(product)
+        return products
