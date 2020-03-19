@@ -40,7 +40,7 @@ class BusinessModel():
         if not product_exits:
             return []
         query = f"""
-            SELECT ssi.package_id, sp.cost_price, sp.ship_price, ssi.price AS ship_international
+            SELECT ssi.package_id, sp.cost_price, sp.ship_price, ssi.price AS ship_international, sp.weight
             FROM store_product AS sp
             INNER JOIN shipping_shippinginternational AS ssi ON
                 sp.id = ssi.package_id
