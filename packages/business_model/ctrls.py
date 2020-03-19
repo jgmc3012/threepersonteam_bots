@@ -51,11 +51,10 @@ class CtrlBusiness():
         products = list()
         for _product_ in products_draw:
             price_for_lb = 5 #USD 
-            cost_price = _product_['cost_price'] + _product_['ship_price'] + _product_['weight'] * price_for_lb
+            price = _product_['cost_price'] + _product_['ship_price'] + ceil(_product_['weight']) * price_for_lb
             meli = 1.16 #PORCENTAJE
             utility = 1.28 #PORCENTAJE
             survey = 1.18 #IMPUESTOS ADUANALES
-            price = cost_price
             if _product_['cost_price'] > 199:
                 price += _product_['cost_price']*survey
             price = price*utility*meli
