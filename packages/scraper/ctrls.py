@@ -284,14 +284,10 @@ class CtrlsScraper:
             input_chatpcha = await page.querySelector('[id="captchacharacters"]')
             if not input_chatpcha:
                 break
-            img = await page.evaluate("""
-                () => {
-                    img = document.querySelector('form img')
-                    return img.src
-                }
-            """)
+            img_draw = await page.querySelector('form img')
+            img = await self.my_pypperteer.get_attribute(img_draw,'src',page)
             await page.click(input_chatpcha)
-            value_chatpcha = input(f'Ingrese la solucion del chatpcha {img}')
+            value_chatpcha = input(f'Ingrese la solucion del chatpcha {img} :')
             await page.keyboard.type(value_chatpcha)
             page = await self.my_pypperteer.change_page(page)
             await page.goto(url)
@@ -326,7 +322,7 @@ class CtrlsScraper:
                 elif 'twister-js-init-dpx-data' in line:
                     read_JSON = True
             variations_data = await page.evaluate(
-                '() => {\n'+json_string+'\nreturn dataToReturn.asinVariationValues\n'+'}'
+                '() => {\n'+json_string+'\n try {\n return dataToReturn.asinVariationValues} \n catch (error) {console.error(error)} \n'+'}'
             )
             if variations_data:
                 skus += variations_data.keys()
