@@ -24,3 +24,14 @@ class AllCommands:
                 seller_id=seller_id,
                 func=switch[business]
                 ))
+
+    class CleanDescriptions(Command):
+        """
+        Business
+
+        business:clean_descriptions
+
+        """
+
+        def handle(self):
+            AppLoop().get_loop().run_until_complete(CtrlBusiness().clean_descriptions())

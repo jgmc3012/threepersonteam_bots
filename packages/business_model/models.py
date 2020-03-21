@@ -43,7 +43,7 @@ class BusinessModel():
         if not product_exits:
             return []
         query = f"""
-            SELECT ssi.id AS item_id, sp.cost_price, sp.ship_price, ssi.price AS ship_international, sp.weight
+            SELECT sp.id AS item_id, sp.cost_price, sp.ship_price, ssi.price AS ship_international, sp.weight
             FROM store_product AS sp
             LEFT JOIN shipping_shippinginternational AS ssi ON
                 sp.id = ssi.package_id
@@ -55,3 +55,12 @@ class BusinessModel():
         for product in product_exits:
             product['id'] = product_macth_id[product['item_id']]
         return product_exits
+
+    async def select_desc(self):
+        query = f"SELECT id, description FROM store_product;"
+        return await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
+
+    async def insert_desc(self, products):
+        return await (
+            await ConnectionsDB().get_connection(self.name_connection)
+        ).insert(products, 'store_product', ['description'])

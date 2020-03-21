@@ -1,5 +1,7 @@
 from .models import BusinessModel
 from math import ceil
+import re
+
 
 class CtrlBusiness():
     """Contiene el modelo de negocio para cada tienda en particular que se abra"""
@@ -72,3 +74,10 @@ class CtrlBusiness():
                 product['id'] = _product_.get('id')
             products.append(product)
         return products
+
+    async def clean_descriptions(self):
+        parent = r'((\w*://)?\w+\.\w+\.\w+)|([\w-_\d\.]+@[\w-_\d]+(\.\w+)+)'
+        products = await BusinessModel(None).select_desc()
+        for product in products:
+            product['description'] = re.sub(parent, '',product['description'])
+        await BusinessModel(None).insert_desc(products)
