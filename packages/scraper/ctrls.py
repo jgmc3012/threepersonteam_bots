@@ -22,7 +22,7 @@ class CtrlsScraper:
     sem = asyncio.Semaphore(8)
     my_pypperteer = None
     url_origin = "https://www.amazon.com/-/es/dp/sku?psc=1"
-    parent_description = re.compile(r'((\w*://)?\w+\.\w+\.\w+)|([\w-_\d\.]+@[\w-_\d]+(\.\w+)+)')
+    parent_description = re.compile(r'((\w*://)?\w+\.\w+\.\w+)|([\w\-_\d\.]+@[\w\-_\d]+(\.\w+)+)')
 
     async def init_my_pypperteer(self, profile:str):
         if not self.my_pypperteer:
