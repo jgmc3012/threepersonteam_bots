@@ -254,8 +254,9 @@ class MyPyppeteer(metaclass=SingletonClass):
 
     async def start_rotate_pages(self):
         self.rotate_enabled = True
+        browser,_  = await self.connect_browser()
         for _ in range(1000):
-            pages = await self.browser.pages()
+            pages = await browser.pages()
             if not self.rotate_enabled:
                 return
             for page in pages:
