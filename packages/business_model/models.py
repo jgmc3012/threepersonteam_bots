@@ -2,12 +2,12 @@ from packages.core.db import ConnectionsDB
 from packages.core.utils.config import Config
 
 class BusinessModel():
-    def __init__(self, seller_id:int):
-        self.seller_id = seller_id
+    def __init__(self, store_id:int):
+        self.store_id = store_id
         self.name_connection = 'threepersonteam'
 
     async def select(self, shipper=None):
-        query = f"SELECT product_id FROM store_productforstore WHERE seller_id = {self.seller_id};"
+        query = f"SELECT product_id FROM store_productforstore WHERE store_id = {self.store_id};"
         product_exits_draw = await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
         product_exits = ', '.join([str(i['product_id']) for i in product_exits_draw])
         if shipper:
@@ -36,7 +36,7 @@ class BusinessModel():
         ).insert(products, 'store_productforstore', ['sale_price'])
 
     async def select_exist(self, offset:int, limit:int):
-        query = f"SELECT id, product_id FROM store_productforstore WHERE seller_id = {self.seller_id};"
+        query = f"SELECT id, product_id FROM store_productforstore WHERE store_id = {self.store_id};"
         product_exits_draw = await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
         product_macth_id = {i['product_id']:i['id'] for i in product_exits_draw}
         product_exits = ', '.join([str(i['product_id']) for i in product_exits_draw])

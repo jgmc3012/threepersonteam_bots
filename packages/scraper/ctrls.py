@@ -22,6 +22,7 @@ class CtrlsScraper:
     sem = asyncio.Semaphore(8)
     my_pypperteer = None
     url_origin = "https://www.amazon.com/-/es/dp/sku?psc=1"
+    parent_description = re.compile(r'((\w*://)?\w+\.\w+\.\w+)|([\w\-_\d\.]+@[\w\-_\d]+(\.\w+)+)')
 
     async def init_my_pypperteer(self, profile:str):
         if not self.my_pypperteer:
@@ -142,6 +143,8 @@ class CtrlsScraper:
         description = await MyPyppeteer().get_property(
             description_element, "innerText", page
         )
+        if description:
+            description = re.sub(self.parent_description, '', description)
         # DESCRIPTION #END
         # ATTRIBUTES
         attributes_draw = await page.evaluate(

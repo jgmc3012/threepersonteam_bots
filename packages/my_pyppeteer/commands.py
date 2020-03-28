@@ -26,12 +26,26 @@ class AllCommands:
                 args = []
             AppLoop().get_loop().run_until_complete(MyPyppeteer().open_browser(headless=headless, profile_name=profile_name, args=args))
 
-    class CommandEBayScrap(Command):
+    class CommandCountPages(Command):
         """
         Run count pages
 
         pyppeteer:count_pages
+        {--profile-name= : profile-name}
         """
 
         def handle(self):
-            AppLoop().get_loop().run_until_complete(MyPyppeteer().count_pages())
+            profile_name = self.option('profile-name')
+            AppLoop().get_loop().run_until_complete(MyPyppeteer(profile_name).count_pages())
+
+    class CommandProfileName(Command):
+        """
+        Run rotate_pages
+
+        pyppeteer:rotate_pages
+        {--profile-name= : profile-name}
+        """
+
+        def handle(self):
+            profile_name = self.option('profile-name')
+            AppLoop().get_loop().run_until_complete(MyPyppeteer(profile_name).start_rotate_pages())
