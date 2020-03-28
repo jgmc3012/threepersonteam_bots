@@ -4,7 +4,7 @@ from math import ceil
 class CtrlBusiness():
     """Contiene el modelo de negocio para cada tienda en particular que se abra"""
 
-    def alfredo_form(self, products_draw:list, seller_id:int)->list:
+    def alfredo_form(self, products_draw:list, store_id:int)->list:
         products = list()
         for _product_ in products_draw:
             cost_price = _product_['cost_price'] + _product_['ship_price'] + _product_['ship_international']
@@ -18,7 +18,7 @@ class CtrlBusiness():
             product = {
                 'sale_price': ceil(
                     (cost_price+miami_in_out+mexico_in_out+last_mile)*utility*anicam_ticket*credit_card*meli),
-                'seller_id':seller_id,
+                'store_id':store_id,
                 'product_id': _product_['item_id'],
                 'no_problem':False,
                 'sku':None,
@@ -29,27 +29,27 @@ class CtrlBusiness():
             products.append(product)
         return products
 
-    async def calculate_price(self, seller_id:int, func):
+    async def calculate_price(self, store_id:int, func):
         rank = 0
         while True:
             rank += 1
-            products_draw = await BusinessModel(seller_id).select_exist(
+            products_draw = await BusinessModel(store_id).select_exist(
                 offset=(rank-1)*400,
                 limit=(rank)*400
             )
             if not products_draw:
                 break
-            products = func(products_draw,seller_id)
-            await BusinessModel(seller_id).insert_products(products)
+            products = func(products_draw,store_id)
+            await BusinessModel(store_id).insert_products(products)
 
-        products_draw = await BusinessModel(seller_id).select(
+        products_draw = await BusinessModel(store_id).select(
             shipper='anicam' if func == self.alfredo_form else None
         )
         if products_draw:
-            products = func(products_draw,seller_id)
-            await BusinessModel(seller_id).insert_products(products)
+            products = func(products_draw,store_id)
+            await BusinessModel(store_id).insert_products(products)
 
-    def dominicana_form(self, products_draw:list, seller_id:int)->list:
+    def dominicana_form(self, products_draw:list, store_id:int)->list:
         products = list()
         for _product_ in products_draw:
             price_for_lb = 5 #USD 
@@ -62,7 +62,7 @@ class CtrlBusiness():
             price = price*utility*meli
             product = {
                 'sale_price': ceil(price),
-                'seller_id':seller_id,
+                'store_id':store_id,
                 'product_id': _product_['item_id'],
                 'no_problem':False,
                 'sku':None,
