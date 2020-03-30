@@ -187,7 +187,7 @@ class MyPyppeteer(metaclass=SingletonClass):
         profile_dir = ''
         if platform == "linux" or platform == "linux2":  # linux
             paths = glob(f'{Path.home()}/.config/google-chrome/*/Preferences')
-            paths = glob(f'{Path.home()}/.config/chromium/*/Preferences')
+            paths += glob(f'{Path.home()}/.config/chromium/*/Preferences')
         elif platform == "darwin":  # mac
             paths = glob(f'{Path.home()}/Library/Application Support/Google/Chrome/*/Preferences')  # ruta
         elif platform == "win32":  # Windows...
