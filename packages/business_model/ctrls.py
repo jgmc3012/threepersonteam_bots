@@ -43,7 +43,7 @@ class CtrlBusiness():
             await BusinessModel(store_id).insert_products(products)
 
         products_draw = await BusinessModel(store_id).select(
-            shipper='anicam' if func == self.alfredo_form else None
+            shipper='anicam' if func.__func__.__name__ == 'alfredo_form' else None
         )
         if products_draw:
             products = func(products_draw,store_id)
