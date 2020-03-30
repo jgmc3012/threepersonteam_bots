@@ -26,15 +26,24 @@ class AnicamModel():
         """
         products_with_price_draw = await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
         products_with_price = ', '.join([str(i['package_id']) for i in products_with_price_draw])
-        query = """SELECT id, length, height, width, weight, cost_price 
-            FROM store_product
-            WHERE 
-                length > 0 AND
-                height > 0 AND
-                width > 0 AND
-                weight > 0 AND
+        """
+        Los if son para los productos que no tienen un tamaño por defecto.
+        El condicional de category_name. Es temporal. Mientras se termina de sincronizar los productos de buzzcaloMx
+        """
+        query = """
+            SELECT
+                id,
+                IF(length, length, 10) AS length,
+                IF(height, height, 10) AS height,
+                IF(width, width, 10) AS width,
+                IF(weight, weight, 1.5) AS weight,
+                cost_price
+            FROM
+                store_product
+            WHERE
                 cost_price > 0  AND
-                ship_price >= 0
+                ship_price >= 0 AND
+                category_name IS NOT NULL
             """
         if products_with_price:
             query += f'AND id NOT IN ({products_with_price})'

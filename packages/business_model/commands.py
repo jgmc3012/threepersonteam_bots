@@ -21,6 +21,6 @@ class AllCommands:
                 'dominicana':CtrlBusiness().dominicana_form
             }
             AppLoop().get_loop().run_until_complete(CtrlBusiness().calculate_price(
-                seller_id=seller_id,
+                store_id=seller_id,
                 func=switch[business]
                 ))

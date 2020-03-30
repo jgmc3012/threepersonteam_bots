@@ -23,7 +23,7 @@ class BusinessModel():
                 sp.id = ssi.package_id \n"""
         query += 'WHERE \n'
         if shipper:
-            query += """ssi.shipper_id={id} AND
+            query += f"""ssi.shipper_id={id} AND
                 ssi.price > 0 AND"""
         if product_exits:
             query += f" sp.id NOT IN ({product_exits}) AND "
