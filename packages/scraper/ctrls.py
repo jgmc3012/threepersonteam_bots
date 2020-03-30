@@ -418,9 +418,8 @@ class CtrlsScraper:
         products_draw = await self.get_product(sku, country)
         products = list()
         for _products_ in products_draw:
-            for p in _products_:
-                if p['title']:
-                    products.append(p)
+            if _products_['title']:
+                products.append(_products_)
 
         logging.getLogger('log_print').info(f'Inserting {len(products)} products in the database')
         await self.insert_database(products)
