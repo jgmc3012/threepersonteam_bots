@@ -410,6 +410,20 @@ class CtrlsScraper:
         }
         return converter[unit]*count
 
+    async def new_product(self, sku:str, country:str):
+        """
+        Scrapea un producto y sus variaciones desde la pagina de amazon y lo
+        inserta en la base de datos
+        """
+        products_draw = await self.get_product(sku, country)
+        products = list()
+        for _products_ in products_draw:
+            for p in _products_:
+                if p['title']:
+                    products.append(p)
+        await self.insert_database(products)
+
+
     async def get_skus_from_page(self, page):
         skus_draw = await page.evaluate("""
             () => {
@@ -419,11 +433,15 @@ class CtrlsScraper:
         """)
         return [sku for sku in skus_draw if sku]
 
-    async def scraper_pages(self, uri, country, number_page:int=0):
-        time_start = datetime.now()
+    async def scraper_pages(self, uri:str, country:str, number_page:int=0):
+        """
+        - Entra a una pagina de busqueda en Amazon.com
+        - Selecciona todos sku.
+        - Va de pagina en pagina scrapeando dicho producto
+        - Los inserta en la base de datos
+        """
         profile_scraper = 'scraper'
         profile_scraper = f'{profile_scraper}_{country}'
-        products_length = 0
         while True:
             number_page += 1
             logging.getLogger('log_print').info(f'Scraping page number {number_page}')
@@ -435,26 +453,16 @@ class CtrlsScraper:
                 self.my_pypperteer.close_page_pool(id_page)
 
             if not skus:
-                logging.getLogger('log_print').info(f'finish Scraping in page number {number_page-1}')
+                logging.getLogger('log_print').info(f'Finish Scraping in page number {number_page-1}')
                 break
-            products_coros = [self.get_product(sku, country) for sku in skus]
+            logging.getLogger('log_print').info(f'Products found on the page: {len(skus)}')
             skus_in_database = set(await ProductModel().select())
             skus = [sku for sku in skus if sku not in skus_in_database]
-            if not skus:    
+            logging.getLogger('log_print').info(f'New products to scrape: {len(skus)}')
+            if not skus:
                 continue
-            products_draw = await asyncio.gather(*products_coros)
-            products = list()
-            for _products_ in products_draw:
-                for p in _products_:
-                    if p['title']:
-                        products.append(p)
-
-            await self.insert_database(products)
-            products_length += len(products)
-
-        logging.getLogger("log_print_full").info(f'{datetime.now()-time_start}')
-        logging.getLogger("log_print_full").info(f'{datetime.now()}')
-        logging.getLogger("log_print_full").info(f'Total de productos Scrapeados {products_length}')
+            products_coros = [self.new_product(sku, country) for sku in skus]
+            await asyncio.gather(*products_coros)
 
     async def insert_database(self, products_draw:list):
         products = list()
