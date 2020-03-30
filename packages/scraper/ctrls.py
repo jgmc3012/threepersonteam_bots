@@ -421,6 +421,8 @@ class CtrlsScraper:
             for p in _products_:
                 if p['title']:
                     products.append(p)
+
+        logging.getLogger('log_print').info(f'Inserting {len(products)} products in the database')
         await self.insert_database(products)
 
 
