@@ -34,3 +34,15 @@ class AllCommands:
             init_page = int(self.option('init-page'))-1 if self.option('init-page') else 0
             uri = self.option('uri')
             AppLoop().get_loop().run_until_complete(CtrlsScraper().scraper_pages(uri, country, init_page))
+
+    class ScraperUpdateProduct(Command):
+        """
+        Scrapear un producto y actualizarlo
+
+        scraper:amazon_scan_pages
+        {--sku= : sku}
+        """
+
+        def handle(self):
+            sku = self.option('sku')
+            AppLoop().get_loop().run_until_complete(CtrlsScraper().update_item(sku))

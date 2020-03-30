@@ -6,6 +6,12 @@ import asyncio
 from datetime import datetime
 from .models import ProductModel, AttributeModel, PictureModel
 
+from selectorlib import Extractor
+from packages.core.utils.web_client import WebClient
+import json 
+import argparse
+import os
+
 class CtrlsScraper:
     PRODUCT_NOT_AVAILABLE = "-1"
     PRICE_NOT_FOUND = "-2"
@@ -497,3 +503,21 @@ class CtrlsScraper:
         await ProductModel().insert(products)
         await AttributeModel().insert(attributes)
         await PictureModel().insert(pictures)
+
+    async def update_item(self,sku:str):
+        url = f'https://www.amazon.com/dp/{sku}?psc=1'
+        # Create an Extractor by reading from the YAML file
+        e = Extractor.from_yaml_file(f'{os.getcwd()}/package/scraper/selectors.yml')
+        # user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.246'
+        # headers = {'User-Agent': user_agent}
+        # Download the page using WebCLient
+        print('realizando la peticion')
+        async with (await WebClient().get_session()).get(url) as resp:
+                        bodyHTML = await resp.text()
+        print('Analizando la data')
+
+        # Pass the HTML of the page and create 
+        data = e.extract(bodyHTML)
+
+        # Print the data
+        print(json.dumps(data, indent=True))
