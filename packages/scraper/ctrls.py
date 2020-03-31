@@ -531,6 +531,7 @@ class CtrlsScraper:
                 cookies=self.cookies,
                 return_data='text'
                 )
+            bodyHTML = bodyHTML if bodyHTML else ''
             logging.getLogger("log_print_full").debug(f'Analizando la data de {sku}. Esperando 1 seg para continuar')
 
             # Pass the HTML of the page and create
@@ -572,8 +573,8 @@ class CtrlsScraper:
             await asyncio.gather(*updates_coros)
             await ProductModel().insert(products)
             count += 1
-            logging.getLogger("log_print_full").info(f"Fin de la ronda N° {count}. Tiempo de\
-actualizacion de los {limit} productos:{(datetime.now()-start).total_seconds()}")
+            logging.getLogger("log_print_full").info(f"Fin de la ronda N° {count}. \
+Tiempo de actualizacion de los {limit} productos:{(datetime.now()-start).total_seconds()}")
             if count//5 == 0:
                 sleep = 60
             else:
