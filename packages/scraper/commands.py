@@ -37,12 +37,10 @@ class AllCommands:
 
     class ScraperUpdateProduct(Command):
         """
-        Scrapear un producto y actualizarlo
+        Scrapear y actualizar los productos de la base de datos.
 
-        scraper:amazon_scan_pages
-        {--sku= : sku}
+        scraper:amazon_update_products
         """
 
         def handle(self):
-            sku = self.option('sku')
-            AppLoop().get_loop().run_until_complete(CtrlsScraper().update_item(sku))
+            AppLoop().get_loop().run_until_complete(CtrlsScraper().update_products_olds())

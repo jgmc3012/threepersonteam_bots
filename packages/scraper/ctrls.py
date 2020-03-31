@@ -11,6 +11,8 @@ from packages.core.utils.web_client import WebClient
 import json 
 import argparse
 import os
+from datetime import datetime, timedelta
+
 
 class CtrlsScraper:
     PRODUCT_NOT_AVAILABLE = "-1"
@@ -26,9 +28,18 @@ class CtrlsScraper:
         "-5": "CRITICAL_ERROR",
     }
     sem = asyncio.Semaphore(8)
+    sem_fast = asyncio.Semaphore(3)
     my_pypperteer = None
     url_origin = "https://www.amazon.com/-/es/dp/sku?psc=1"
     parent_description = re.compile(r'((\w*://)?\w+\.\w+\.\w+)|([\w\-_\d\.]+@[\w\-_\d]+(\.\w+)+)')
+    pattern_price = re.compile(r'(\d+\.?\d*)')
+    pattern_price_shipping = re.compile(r'(\d+\.?\d*) [Ee]nvío')
+    cookies = {
+        "session-id":"132-4528637-2870205",
+        "ubid-main":"130-0267183-0060640",
+        "lc-main":"es_US",
+        "i18n-prefs":"USD",
+    }
 
     async def init_my_pypperteer(self, profile:str):
         if not self.my_pypperteer:
@@ -69,9 +80,6 @@ class CtrlsScraper:
         el elemento con el precio no existe, asumimos que el producto
         no se encuentra disponible.
         """
-        # PRICE PRODUCT AND PRICE SHIPPING
-        pattern_price = r'(\d+\.?\d*)'
-        pattern_price_shipping = r'(\d+\.?\d*) [Ee]nvío'
 
         price_product_element = await page.querySelector("#priceblock_ourprice")
         if price_product_element:
@@ -100,13 +108,13 @@ class CtrlsScraper:
         price_product_draw = price_product_draw.replace(',','') if price_product_draw else ''
 
         price_product_str = self.price_or_err(
-            pattern_price, price_product_draw, self.PRICE_NOT_FOUND
+            self.pattern_price, price_product_draw, self.PRICE_NOT_FOUND
         )
         if ' no se envía ' in price_shipping_draw:
             price_shipping_str = self.PRODUCT_NOT_SHIP
         else:
             price_shipping_str = self.price_or_err(
-            pattern_price_shipping, price_shipping_draw, self.PRICE_NOT_FOUND
+            self.pattern_price_shipping, price_shipping_draw, self.PRICE_NOT_FOUND
             )
             if price_shipping_str == self.PRICE_NOT_FOUND:
                 price_shipping_str = self.price_shipping_or_err(
@@ -360,7 +368,8 @@ class CtrlsScraper:
         """
         if string is None:
             return 0
-
+        else:
+            string = string.replace(',', '')
         try:
             match = re.search(pattern, string)
             if match:
@@ -464,7 +473,8 @@ class CtrlsScraper:
                 logging.getLogger('log_print').info(f'Finish Scraping in page number {number_page-1}')
                 break
             logging.getLogger('log_print').info(f'Products found on the page: {len(skus)}')
-            skus_in_database = set(await ProductModel().select())
+            skus_in_database_raw = await ProductModel().select(fields=['provider_sku'])
+            skus_in_database = {i['provider_sku'] for i in skus_in_database_raw}
             skus = [sku for sku in skus if sku not in skus_in_database]
             logging.getLogger('log_print').info(f'New products to scrape: {len(skus)}')
             if not skus:
@@ -504,20 +514,69 @@ class CtrlsScraper:
         await AttributeModel().insert(attributes)
         await PictureModel().insert(pictures)
 
-    async def update_item(self,sku:str):
-        url = f'https://www.amazon.com/dp/{sku}?psc=1'
-        # Create an Extractor by reading from the YAML file
-        e = Extractor.from_yaml_file(f'{os.getcwd()}/package/scraper/selectors.yml')
-        # user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.246'
-        # headers = {'User-Agent': user_agent}
-        # Download the page using WebCLient
-        print('realizando la peticion')
-        async with (await WebClient().get_session()).get(url) as resp:
-                        bodyHTML = await resp.text()
-        print('Analizando la data')
+    async def get_data_fast(self, sku:str):
+        """
+        Realiza una peticion en texto plano y se parsea el body para obtener los datos
+        deseados
 
-        # Pass the HTML of the page and create 
-        data = e.extract(bodyHTML)
+        Retorna la data obtenida de la pagina por medio de los selectores
+        """
+        async with self.sem_fast:
+            url = self.url_origin.replace('sku',sku)
+            # Create an Extractor by reading from the YAML file
+            e = Extractor.from_yaml_file(f'{os.getcwd()}/packages/scraper/selectors.yaml')
 
-        # Print the data
-        print(json.dumps(data, indent=True))
+            logging.getLogger("log_print_full").debug(f'realizando la peticion a {url}')
+            bodyHTML = await WebClient().get(uri=url,
+                cookies=self.cookies,
+                return_data='text'
+                )
+            logging.getLogger("log_print_full").debug(f'Analizando la data de {sku}. Esperando 1 seg para continuar')
+
+            # Pass the HTML of the page and create
+            data = e.extract(bodyHTML)
+            data['sku'] = sku
+            await asyncio.sleep(1)
+            if data['captcha']:
+                logging.getLogger("log_print_full").warning(f"APARECIO EL CAPTCHA. Fecha: {datetime.now()}")
+                exit()
+
+        return data
+
+    def get_price(self,data):
+        data['sale_price_regex'] = self.price_or_err(
+            self.pattern_price, data["sale_price"], self.PRICE_NOT_FOUND
+        )
+        logging.getLogger("log_print_full").debug(json.dumps(data, indent=True))
+        return float(data['sale_price_regex'])
+
+    async def update_product(self, product):
+        product_data = await self.get_data_fast(product['provider_sku'])
+        product['cost_price'] = self.get_price(product_data)
+        product['last_update'] = datetime.now()
+        return product
+
+    async def update_products_olds(self, limit:int=100):
+        """
+        Actualiza los producto en la base de datos. Desde el más viejo hasta el más actualizado.
+        """
+        count = 0
+        while True:
+            logging.getLogger("log_print_full").info(f"Obteniendo {limit} registros de la DB.")
+            start = datetime.now()
+            products = await ProductModel().select(limit=limit)
+            if products[0]['last_update'] > (
+                datetime.now() - timedelta(days=5)):
+                break
+            updates_coros = [self.update_product(product) for product in products]
+            await asyncio.gather(*updates_coros)
+            await ProductModel().insert(products)
+            count += 1
+            logging.getLogger("log_print_full").info(f"Fin de la ronda N° {count}. Tiempo de\
+actualizacion de los {limit} productos:{(datetime.now()-start).total_seconds()}")
+            if count//5 == 0:
+                sleep = 60
+            else:
+                sleep = 10
+            logging.getLogger("log_print_full").info(f"Durmiendo {sleep} seg.")
+            await asyncio.sleep(sleep)

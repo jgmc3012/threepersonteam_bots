@@ -10,21 +10,20 @@ class ProductModel():
     def __init__(self):
         self.name_connection = 'threepersonteam'
         self.fields = [
-        'title', # :str, (max_length=60)
-        'cost_price', # :float, (null=True)
-        'ship_price', # :float,(null=True)
-        'provider_sku', # :str, (max_length=50, unique=True)
-        'provider_link', # :str, (max_length=255, unique=True)
-        'image', # :str, (max_length=255)
-        'category_name', # models.CharField(max_length=60) #"Temporal." Para el scraper de amazon
-        'description' # :str, (null=True, default=None)
-        'quantity' # :int,
-        'last_update', # DateTimeField(default=timezone.localtime)
-        'height', # models.FloatField(default=None, null=True)
-        'width', # models.FloatField(default=None, null=True)
-        'length', # models.FloatField(default=None, null=True)
-        'weight', # models.FloatField(default=None, null=True)
-       
+            'title', # :str, (max_length=60)
+            'cost_price', # :float, (null=True)
+            'ship_price', # :float,(null=True)
+            'provider_sku', # :str, (max_length=50, unique=True)
+            'provider_link', # :str, (max_length=255, unique=True)
+            'image', # :str, (max_length=255)
+            'category_name', # models.CharField(max_length=60) #"Temporal." Para el scraper de amazon
+            'description' # :str, (null=True, default=None)
+            'quantity' # :int,
+            'last_update', # DateTimeField(default=timezone.localtime)
+            'height', # models.FloatField(default=None, null=True)
+            'width', # models.FloatField(default=None, null=True)
+            'length', # models.FloatField(default=None, null=True)
+            'weight', # models.FloatField(default=None, null=True)
         ]
         self.keys = ['cost_price', 'ship_price', 'quantity', 'last_update']
 
@@ -33,10 +32,22 @@ class ProductModel():
             await ConnectionsDB().get_connection(self.name_connection)
         ).insert(products, f'store_product', self.keys)
 
-    async def select(self):
-        query = f"SELECT provider_sku AS sku from store_product"
-        res = await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
-        return [i['sku'] for i in res]
+    async def select(self, fields:list=list(), offset=None, limit=None):
+        query = "SELECT\n"
+        if fields:
+            query += '\n,'.join(fields)
+        else:
+            query += ' *'
+        query += " FROM store_product"
+        query +=' ORDER BY last_update'
+        if offset!=None or limit:
+            query += ' LIMIT'
+            if offset!=None:
+                query += f' {offset},'
+            if limit:
+                query += f' {limit}'
+        query += ';'
+        return await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
 
 class AttributeModel():
     """
