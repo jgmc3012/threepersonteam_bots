@@ -13,6 +13,10 @@ title:
 sale_price:
     css: '#priceblock_ourprice, #priceblock_saleprice'
     type: Text
+quantity:
+    css: '#quantity option:last-child'
+    type: Attribute
+    attribute: value
 captcha:
     css: '[id="captchacharacters"]'
     type: Text

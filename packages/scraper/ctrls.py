@@ -547,31 +547,44 @@ class CtrlsScraper:
                 )
             bodyHTML = bodyHTML if bodyHTML else ''
             sleep = 5
-            logging.getLogger("log_print_full").info(f'Analizando la data de {sku}. Esperando {sleep} seg para continuar')
 
             # Pass the HTML of the page and create
             data = self.extractor.extract(bodyHTML)
             data['sku'] = sku
-            await asyncio.sleep(sleep)
+            logging.getLogger("log_print_full").info(f'Analizando la data de {sku}. Luego de {sleep} seg se libera el loop')
+            logging.getLogger("log_print_full").debug(json.dumps(data, indent=True))
             if data['captcha'] or not data['title']:
                 logging.getLogger("log_print_full").warning(f"APARECIO EL CAPTCHA. Fecha: {datetime.now()}. ¿O el producto {sku} no existe?")
                 breakpoint()
+            else:
+                await asyncio.sleep(sleep)
 
         return data
 
     def get_price(self,data):
-        data['sale_price_regex'] = self.price_or_err(
+        sale_price_regex = self.price_or_err(
             self.pattern_price, data["sale_price"], self.PRICE_NOT_FOUND
         )
-        logging.getLogger("log_print_full").debug(json.dumps(data, indent=True))
-        return float(data['sale_price_regex'])
+        logging.getLogger("log_print_full").debug(
+            f'Price scraper: {data["sale_price"]}. Price regex: {sale_price_regex}')
+        return float(sale_price_regex)
+
+    def get_quantity(self, data):
+        try:
+            return int(data["quantity"])
+        except TypeError:
+            return 0
 
     async def update_product(self, product):
         product_data = await self.get_data_fast(product['provider_sku'])
         cost_price = self.get_price(product_data)
+        quantity = self.get_quantity(product_data)
+
         logging.getLogger('log_print_full').info(
             f"Product {product['provider_sku']}: New price: {cost_price}, Old price: {product['cost_price']}")
+
         product['cost_price'] = cost_price
+        product['quantity'] = quantity if cost_price > 0 else 0
         product['last_update'] = datetime.now()
         return product
 

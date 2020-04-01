@@ -4,6 +4,8 @@ from packages.core.utils.config import Config
 from .ctrls import CtrlsScraper
 from .models import AttributeModel
 
+import json
+
 class AllCommands:
     class ScraperProduct(Command):
         """
@@ -40,7 +42,21 @@ class AllCommands:
         Scrapear y actualizar los productos de la base de datos.
 
         scraper:amazon_update_products
+        {--store-id= : store-id}
         """
 
         def handle(self):
+            store_id = int(self.option('store-id')) if self.option('store-id') else None
             AppLoop().get_loop().run_until_complete(CtrlsScraper().update_products_olds())
+
+    class ScraperUpdateProductTest(Command):
+        """
+        Imprimir los datos scrapeador del actulizador. Solo para testear
+
+        scraper:amazon_print_product
+        {--sku= : sku}
+        """
+
+        def handle(self):
+            sku = self.option('sku')
+            AppLoop().get_loop().run_until_complete(CtrlsScraper().get_data_fast(sku))
