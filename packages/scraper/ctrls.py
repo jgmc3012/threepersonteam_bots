@@ -579,9 +579,14 @@ class CtrlsScraper:
         product_data = await self.get_data_fast(product['provider_sku'])
         cost_price = self.get_price(product_data)
         quantity = self.get_quantity(product_data)
-
-        logging.getLogger('log_print_full').info(
-            f"Product {product['provider_sku']}: New price: {cost_price}, Old price: {product['cost_price']}")
+        message = {
+            'New_price': cost_price, 
+            'Old_price': product['cost_price'],
+            'New_quantity': quantity,
+            'Old_quantity': product['quantity'],
+            'link': product['provider_link'],
+        }
+        logging.getLogger('log_print_full').debug(json.dumps(message, indent=True))
 
         product['cost_price'] = cost_price
         product['quantity'] = quantity if cost_price > 0 else 0
