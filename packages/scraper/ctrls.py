@@ -570,8 +570,8 @@ class CtrlsScraper:
         product_data = await self.get_data_fast(product['provider_sku'])
         cost_price = self.get_price(product_data)
         logging.getLogger('log_print_full').info(
-            f"Product {product['provider_sku']}: New price: {cost_price}, Old price: {product['provider_sku']}")
-        product['provider_sku'] = cost_price
+            f"Product {product['provider_sku']}: New price: {cost_price}, Old price: {product['cost_price']}")
+        product['cost_price'] = cost_price
         product['last_update'] = datetime.now()
         return product
 
