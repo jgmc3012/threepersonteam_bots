@@ -539,7 +539,7 @@ class CtrlsScraper:
                 )
             bodyHTML = bodyHTML if bodyHTML else ''
             sleep = 5
-            logging.getLogger("log_print_full").debug(f'Analizando la data de {sku}. Esperando sleep seg para continuar')
+            logging.getLogger("log_print_full").debug(f'Analizando la data de {sku}. Esperando {sleep} seg para continuar')
 
             # Pass the HTML of the page and create
             data = self.extractor.extract(bodyHTML)
