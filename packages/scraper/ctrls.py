@@ -612,7 +612,7 @@ class CtrlsScraper:
             count += 1
             logging.getLogger("log_print_full").info(f"Fin de la ronda N° {count}. \
 Tiempo de actualizacion de los {limit} productos:{(datetime.now()-start).total_seconds()}")
-            if count//5 == 0:
+            if count % 5 == 0:
                 sleep = 60
             else:
                 sleep = 10
