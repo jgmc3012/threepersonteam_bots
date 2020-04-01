@@ -1,17 +1,25 @@
-from packages.my_pyppeteer.ctrls import MyPyppeteer
+import asyncio
 import re
 import logging
 import json
-import asyncio
-from datetime import datetime
-from .models import ProductModel, AttributeModel, PictureModel
-
-from selectorlib import Extractor
-from packages.core.utils.web_client import WebClient
 import json 
 import argparse
 import os
-from datetime import datetime, timedelta
+
+from random import shuffle
+
+from datetime import datetime
+from datetime import timedelta
+
+from selectorlib import Extractor
+
+from packages.my_pyppeteer.ctrls import MyPyppeteer
+from packages.core.utils.web_client import WebClient
+
+from .models import ProductModel
+from .models import AttributeModel
+from .models import PictureModel
+
 
 
 class CtrlsScraper:
@@ -539,7 +547,7 @@ class CtrlsScraper:
                 )
             bodyHTML = bodyHTML if bodyHTML else ''
             sleep = 5
-            logging.getLogger("log_print_full").debug(f'Analizando la data de {sku}. Esperando {sleep} seg para continuar')
+            logging.getLogger("log_print_full").info(f'Analizando la data de {sku}. Esperando {sleep} seg para continuar')
 
             # Pass the HTML of the page and create
             data = self.extractor.extract(bodyHTML)
@@ -560,7 +568,10 @@ class CtrlsScraper:
 
     async def update_product(self, product):
         product_data = await self.get_data_fast(product['provider_sku'])
-        product['cost_price'] = self.get_price(product_data)
+        cost_price = self.get_price(product_data)
+        logging.getLogger('log_print_full').info(
+            f"Product {product['provider_sku']}: New price: {cost_price}, Old price: {product['provider_sku']}")
+        product['provider_sku'] = cost_price
         product['last_update'] = datetime.now()
         return product
 
@@ -573,6 +584,7 @@ class CtrlsScraper:
             logging.getLogger("log_print_full").info(f"Obteniendo {limit} registros de la DB.")
             start = datetime.now()
             products = await ProductModel().select(limit=limit)
+            shuffle(products)
             if products[0]['last_update'] > (
                 datetime.now() - timedelta(days=5)):
                 break
