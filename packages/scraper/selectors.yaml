@@ -11,7 +11,7 @@ title:
     css: '#title'
     type: Text
 sale_price:
-    css: '#priceblock_ourprice'
+    css: '#priceblock_ourprice, #priceblock_saleprice'
     type: Text
 captcha:
     css: '[id="captchacharacters"]'

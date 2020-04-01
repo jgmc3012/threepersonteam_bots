@@ -28,7 +28,7 @@ class CtrlsScraper:
         "-5": "CRITICAL_ERROR",
     }
     sem = asyncio.Semaphore(8)
-    sem_fast = asyncio.Semaphore(3)
+    sem_fast = asyncio.Semaphore(1) # Estoy es igual al numero de ips publicas. Hay que automatizarlo
     my_pypperteer = None
     url_origin = "https://www.amazon.com/-/es/dp/sku?psc=1"
     parent_description = re.compile(r'((\w*://)?\w+\.\w+\.\w+)|([\w\-_\d\.]+@[\w\-_\d]+(\.\w+)+)')
@@ -40,6 +40,14 @@ class CtrlsScraper:
         "lc-main":"es_US",
         "i18n-prefs":"USD",
     }
+    _extractor_ = None
+
+    @property
+    def extractor(self):
+        if not self._extractor_:
+            # Create an Extractor by reading from the YAML file
+            self._extractor_ = Extractor.from_yaml_file(f'{os.getcwd()}/packages/scraper/selectors.yaml')
+        return self._extractor_
 
     async def init_my_pypperteer(self, profile:str):
         if not self.my_pypperteer:
@@ -523,8 +531,6 @@ class CtrlsScraper:
         """
         async with self.sem_fast:
             url = self.url_origin.replace('sku',sku)
-            # Create an Extractor by reading from the YAML file
-            e = Extractor.from_yaml_file(f'{os.getcwd()}/packages/scraper/selectors.yaml')
 
             logging.getLogger("log_print_full").debug(f'realizando la peticion a {url}')
             bodyHTML = await WebClient().get(uri=url,
@@ -532,15 +538,16 @@ class CtrlsScraper:
                 return_data='text'
                 )
             bodyHTML = bodyHTML if bodyHTML else ''
-            logging.getLogger("log_print_full").debug(f'Analizando la data de {sku}. Esperando 1 seg para continuar')
+            sleep = 5
+            logging.getLogger("log_print_full").debug(f'Analizando la data de {sku}. Esperando sleep seg para continuar')
 
             # Pass the HTML of the page and create
-            data = e.extract(bodyHTML)
+            data = self.extractor.extract(bodyHTML)
             data['sku'] = sku
-            await asyncio.sleep(1)
-            if data['captcha']:
-                logging.getLogger("log_print_full").warning(f"APARECIO EL CAPTCHA. Fecha: {datetime.now()}")
-                exit()
+            await asyncio.sleep(sleep)
+            if data['captcha'] or not data['title']:
+                logging.getLogger("log_print_full").warning(f"APARECIO EL CAPTCHA. Fecha: {datetime.now()}. ¿O el producto {sku} no existe?")
+                breakpoint()
 
         return data
 
