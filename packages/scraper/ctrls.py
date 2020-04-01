@@ -7,6 +7,7 @@ import argparse
 import os
 
 from random import shuffle
+from random import random
 
 from datetime import datetime
 from datetime import timedelta
@@ -546,7 +547,8 @@ class CtrlsScraper:
                 return_data='text'
                 )
             bodyHTML = bodyHTML if bodyHTML else ''
-            sleep = 5
+            sleep_avg = 5
+            sleep = 2 + random()*(2*sleep_avg - 2*2)
 
             # Pass the HTML of the page and create
             data = self.extractor.extract(bodyHTML)
