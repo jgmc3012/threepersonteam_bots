@@ -37,7 +37,10 @@ class CtrlsScraper:
         "-5": "CRITICAL_ERROR",
     }
     sem = asyncio.Semaphore(8)
-    sem_fast = asyncio.Semaphore(1) # Estoy es igual al numero de ips publicas. Hay que automatizarlo
+    sem_fast = asyncio.Semaphore(3) # Estoy es igual al numero de ips publicas. Hay que automatizarlo
+    sleep_avg = 5
+    sleep = 2 + random()*(2*sleep_avg - 2*2)
+
     my_pypperteer = None
     url_origin = "https://www.amazon.com/-/es/dp/sku?psc=1"
     parent_description = re.compile(r'((\w*://)?\w+\.\w+\.\w+)|([\w\-_\d\.]+@[\w\-_\d]+(\.\w+)+)')
@@ -547,19 +550,17 @@ class CtrlsScraper:
                 return_data='text'
                 )
             bodyHTML = bodyHTML if bodyHTML else ''
-            sleep_avg = 5
-            sleep = 2 + random()*(2*sleep_avg - 2*2)
 
             # Pass the HTML of the page and create
             data = self.extractor.extract(bodyHTML)
             data['sku'] = sku
-            logging.getLogger("log_print_full").info(f'Analizando la data de {sku}. Luego de {sleep} seg se libera el loop')
+            logging.getLogger("log_print_full").info(f'Analizando la data de {sku}. Luego de {self.sleep} seg se libera el loop')
             logging.getLogger("log_print_full").debug(json.dumps(data, indent=True))
             if data['captcha'] or not data['title']:
                 logging.getLogger("log_print_full").warning(f"APARECIO EL CAPTCHA. Fecha: {datetime.now()}. ¿O el producto {sku} no existe?")
                 breakpoint()
             else:
-                await asyncio.sleep(sleep)
+                await asyncio.sleep(self.sleep)
 
         return data
 
@@ -571,6 +572,24 @@ class CtrlsScraper:
             f'Price scraper: {data["sale_price"]}. Price regex: {sale_price_regex}')
         return float(sale_price_regex)
 
+    def get_price_ship(self,data):
+        if not data["ship_price2"] or not data["ship_price1"]:
+            return float(self.PRODUCT_NOT_AVAILABLE)
+        if ' no se envía ' in data["ship_price2"]:
+            return float(self.PRODUCT_NOT_SHIP)
+        
+        price_shipping_str = self.price_or_err(
+        self.pattern_price_shipping, data["ship_price1"], self.PRICE_NOT_FOUND
+        )
+
+        if price_shipping_str != self.PRICE_NOT_FOUND:
+            return float(price_shipping_str)
+
+        price_shipping_str = self.price_shipping_or_err(
+                data["ship_price1"], self.PRICE_NOT_FOUND
+            )
+        return float(price_shipping_str)
+
     def get_quantity(self, data):
         try:
             return int(data["quantity"])
@@ -580,17 +599,18 @@ class CtrlsScraper:
     async def update_product(self, product):
         product_data = await self.get_data_fast(product['provider_sku'])
         cost_price = self.get_price(product_data)
+        ship_price = self.get_price_ship(product_data)
         quantity = self.get_quantity(product_data)
         message = {
-            'New_price': cost_price, 
-            'Old_price': product['cost_price'],
-            'New_quantity': quantity,
-            'Old_quantity': product['quantity'],
+            'cost_price': cost_price,
+            'ship_price': ship_price,
+            'quantity': quantity,
             'link': product['provider_link'],
         }
         logging.getLogger('log_print_full').debug(json.dumps(message, indent=True))
 
         product['cost_price'] = cost_price
+        product['ship_price'] = ship_price
         product['quantity'] = quantity if cost_price > 0 else 0
         product['last_update'] = datetime.now()
         return product

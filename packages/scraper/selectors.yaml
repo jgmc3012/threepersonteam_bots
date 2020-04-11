@@ -1,17 +1,14 @@
-# category:
-#     css: 'div.a-subheader ul.a-unordered-list'
-#     type: Text
-# original_price:
-#     css: span.priceBlockStrikePriceString
-#     type: Text
-# availability:
-#     css: 'div.feature div.a-section div.feature div.a-section div.a-section span.a-size-medium'
-#     type: Text
 title:
     css: '#title'
     type: Text
 sale_price:
     css: '#priceblock_ourprice, #priceblock_saleprice'
+    type: Text
+ship_price1:
+    css: '#ourprice_shippingmessage'
+    type: Text
+ship_price2:
+    css: '#fast-track'
     type: Text
 quantity:
     css: '#quantity option:last-child'
