@@ -37,9 +37,8 @@ class CtrlsScraper:
         "-5": "CRITICAL_ERROR",
     }
     sem = asyncio.Semaphore(8)
-    sem_fast = asyncio.Semaphore(3) # Estoy es igual al numero de ips publicas. Hay que automatizarlo
+    sem_fast = asyncio.Semaphore(1) # Estoy es igual al numero de ips publicas. Hay que automatizarlo
     sleep_avg = 5
-    sleep = 2 + random()*(2*sleep_avg - 2*2)
 
     my_pypperteer = None
     url_origin = "https://www.amazon.com/-/es/dp/sku?psc=1"
@@ -551,16 +550,16 @@ class CtrlsScraper:
                 )
             bodyHTML = bodyHTML if bodyHTML else ''
 
-            # Pass the HTML of the page and create
+            sleep = 2 + random()*(2*self.sleep_avg - 2*2)
             data = self.extractor.extract(bodyHTML)
             data['sku'] = sku
-            logging.getLogger("log_print_full").info(f'Analizando la data de {sku}. Luego de {self.sleep} seg se libera el loop')
+            logging.getLogger("log_print_full").info(f'Analizando la data de {sku}. Luego de {sleep} seg se libera el loop')
             logging.getLogger("log_print_full").debug(json.dumps(data, indent=True))
             if data['captcha'] or not data['title']:
                 logging.getLogger("log_print_full").warning(f"APARECIO EL CAPTCHA. Fecha: {datetime.now()}. ¿O el producto {sku} no existe?")
                 breakpoint()
             else:
-                await asyncio.sleep(self.sleep)
+                await asyncio.sleep(sleep)
 
         return data
 
