@@ -2,9 +2,11 @@ import asyncio
 import re
 import logging
 import json
-import json 
 import argparse
 import os
+import demjson
+
+from more_itertools import grouper
 
 from random import shuffle
 from random import random
@@ -21,6 +23,11 @@ from .models import ProductModel
 from .models import AttributeModel
 from .models import PictureModel
 
+from .utils import price_shipping_or_err
+from .utils import price_or_err
+from .utils import weight_converter
+from .utils import distance_converter
+from .utils import get_yaml
 
 
 class CtrlsScraper:
@@ -37,14 +44,15 @@ class CtrlsScraper:
         "-5": "CRITICAL_ERROR",
     }
     sem = asyncio.Semaphore(8)
-    sem_fast = asyncio.Semaphore(1) # Estoy es igual al numero de ips publicas. Hay que automatizarlo
+    _sem_web_client_ = None
     sleep_avg = 5
 
     my_pypperteer = None
-    url_origin = "https://www.amazon.com/-/es/dp/sku?psc=1"
+    url_origin = "https://www.amazon.com.mx/-/es/dp/sku?psc=1"
     parent_description = re.compile(r'((\w*://)?\w+\.\w+\.\w+)|([\w\-_\d\.]+@[\w\-_\d]+(\.\w+)+)')
     pattern_price = re.compile(r'(\d+\.?\d*)')
     pattern_price_shipping = re.compile(r'(\d+\.?\d*) [Ee]nvío')
+
     cookies = {
         "session-id":"132-4528637-2870205",
         "ubid-main":"130-0267183-0060640",
@@ -52,20 +60,226 @@ class CtrlsScraper:
         "i18n-prefs":"USD",
     }
     _extractor_ = None
+    _web_client_ = None
+    _selectors_new_ = None
 
     @property
     def extractor(self):
         if not self._extractor_:
             # Create an Extractor by reading from the YAML file
-            self._extractor_ = Extractor.from_yaml_file(f'{os.getcwd()}/packages/scraper/selectors.yaml')
+            self._extractor_ = Extractor.from_yaml_file(f'{os.path.dirname(os.path.realpath(__file__))}/storage/selectors.yaml')
         return self._extractor_
+
+    @property
+    def sem_web_client(self):
+        if not self._web_client_:
+            self.init_web_client()
+        return self._sem_web_client_
+
+    @property
+    def web_client(self):
+        if not self._web_client_:
+            self.init_web_client()
+        return self._web_client_
+
+    @property
+    def selectors_new(self):
+        if not self._selectors_new_:
+            self._selectors_new_ = get_yaml(
+                f'{os.path.dirname(os.path.realpath(__file__))}/storage/selectors_new.yaml'
+            )
+        return self._selectors_new_
 
     async def init_my_pypperteer(self, profile:str):
         if not self.my_pypperteer:
             self.my_pypperteer = MyPyppeteer(profile)
             await self.my_pypperteer.connect_browser()
             await self.my_pypperteer.init_pool_pages(self.sem._value)
+
+    def init_web_client(self):
+        self._web_client_ = WebClient()
+        self._sem_web_client_ = asyncio.Semaphore(len(self.web_client.ip_publics))
+
+    def get_price_cost(self,price_str)->float:
+        """
+        Recibe un texto y retorna un precio que se encuentre en este
+        """
+        price_str = price_str.replace(',','')
+        sale_price_regex = price_or_err(
+            self.pattern_price, price_str, self.PRICE_NOT_FOUND
+        )
+        logging.getLogger("log_print_full").debug(
+            f'Price scraper: {price_str}. Price regex: {sale_price_regex}')
+        return float(sale_price_regex)
+
+    def _get_price_ship(self, price_str)->str:
+        price_shipping_str = price_or_err(
+        self.pattern_price_shipping, price_str, self.PRICE_NOT_FOUND
+        )
+
+        if price_shipping_str != self.PRICE_NOT_FOUND:
+            return price_shipping_str
+
+        return price_shipping_or_err(
+                price_str, self.PRICE_NOT_FOUND
+            )
+
+    def get_price_ship(self,price_str_1, price_str_2)->float:
+        """
+        Recibe dos string con informacion referente al costo de envio
+        Retorna el precio de envio. si el mismo esta disponible
+        """
+        if not price_str_1 or not price_str_2:
+            return float(self.PRODUCT_NOT_AVAILABLE)
+        if ' no se envía ' in price_str_2:
+            return float(self.PRODUCT_NOT_SHIP)
         
+        price_shipping_str = self._get_price_ship(price_str_1)
+        if price_shipping_str != self.PRICE_NOT_FOUND:
+            return float(price_shipping_str)
+
+        return float(self._get_price_ship(price_str_2))
+
+    def get_quantity(self, quantity_str)->int:
+        """
+        Recibe un numero en string y lo retorna en flotante
+        Si sucede un error retorna 0
+        """
+        try:
+            return int(quantity_str)
+        except (TypeError,ValueError):
+            return 0
+
+    def get_description(self, description_raw:str)->str:
+        if not description_raw:
+            return ''
+        return re.sub(self.parent_description, '',
+                    description_raw.replace('"','').replace("'",'')
+                )
+
+    def get_categories(self, categories_raw:str)->tuple:
+        """
+        Recibe un string con todas las categorias
+        Retorna la categoria raiz y hoja del arbol
+        """
+        categories_raw = categories_raw.split('›')
+        if len(categories_raw) < 2:
+            return None, None
+
+        category_root = categories_raw[0].strip()
+        category_child = categories_raw[-1].strip()
+
+        return category_root, category_child
+
+    def get_dimensions(self, dimensions_str:str, old_dimensions=dict())->dict:
+        dimensions = dict()
+        # Las dimensiones vienen en este formato "7.1 x 4 x 1.9 inches"
+        dimensions_draw = dimensions_str.replace(',','').split(';')
+        dimensions_draw = dimensions_draw[0].split('x')
+        if len(dimensions_draw) < 3:
+            return dict()
+        dimensions['x'] = float(dimensions_draw[0])
+        dimensions['y'] = float(dimensions_draw[1])
+        dimensions_draw = dimensions_draw[2].strip().split(' ')
+        dimensions['z'] = float(dimensions_draw[0])
+        unit = dimensions_draw[1].lower()
+
+        dimensions['x'] = distance_converter(dimensions['x'], unit)
+        dimensions['y'] = distance_converter(dimensions['y'], unit)
+        dimensions['z'] = distance_converter(dimensions['z'], unit)
+        if not old_dimensions:
+            return dimensions
+        if (old_dimensions['x']*old_dimensions['y']*old_dimensions['z']) < (dimensions['x']*dimensions['y']*dimensions['z']):
+            return dimensions
+
+    def get_weight(self, weight_str:str, old_weight=0):
+        weight_raw = weight_str.strip().replace(',','').split(' ')
+        weight = weight_converter(weight_raw[0], weight_raw[1])
+
+        if old_weight < weight:
+            return weight
+        return old_weight
+
+    def get_attributes_from_a_list(self,attr_list):
+        """
+        Dado una serie de atributos en una lista, donde cada item es un string
+        de clave:valor separados por in ":"
+        
+        Se retorna un diccionario con dichos items
+        """
+        attributes = dict()
+        for row in attr_list:
+            item = row.split(':')
+            if len(item) > 1:
+                key = item[0].strip().replace(' ', '_').lower()
+                value = item[1].strip()
+                attributes[key] = value
+        return attributes
+    
+    def get_attributes_from_a_table(self, attr_table):
+        """
+        Dado una serie de atributos en una lista, donde cada dos nodos de la lista
+         representan las clave y valor de un item respectivamente.
+        
+        Se retorna un diccionario con dichos items
+        """
+        attributes = dict()
+        for col in grouper(attr_table,2,''):
+            key = col[0].strip().replace(' ', '_').lower()
+            value = col[1].strip()
+            attributes[key] = value
+        return attributes      
+
+    def get_attributes(self, attr_list:list, attr_table:list, attr_var:list)->dict:
+        attributes = self.get_attributes_from_a_list(attr_var)
+
+        attributes_raw = self.get_attributes_from_a_list(attr_list)
+        attributes_raw.update(self.get_attributes_from_a_table(attr_table))
+
+        attributes['dimensions'] = dict()
+        attributes['weight'] = 0
+        for attribute_key in attributes_raw:
+            if 'dimensiones' in attribute_key:
+                dimensions = self.get_dimensions(attributes_raw[attribute_key])
+                if dimensions:
+                    attributes['dimensions'] = dimensions
+
+            elif 'peso_' in attribute_key:
+                attributes['weight'] = self.get_weight(attributes_raw[attribute_key],
+                                                        old_weight=attributes['weight'])
+
+            elif 'asin' in attribute_key:
+                attributes['sku'] = attributes_raw[attribute_key].strip()
+
+            elif attribute_key not in (
+                'opinión_media_de_los_clientes',
+                'clasificación_en_los_más_vendidos_de_amazon',
+                'producto_en_amazon.com_desde',
+                'envío_nacional',
+                ) and attributes_raw[attribute_key] not in ('clic', 'aquí') :
+                attributes[attribute_key] = attributes_raw[attribute_key]
+
+        return attributes
+
+    def get_title(self, title_str)->str:
+        return title_str.replace('"','').replace("'",'') if title_str else ""
+
+    def get_images(self, bodyHTML:str)->list:
+        images = list()
+        for line in bodyHTML.split('\n'):
+            if "'colorImages':" in line:
+                line = line.strip()
+                start = line.index("'colorImages':") + len("'colorImages':")
+                js_obj = line[start-1:-2]
+                py_obj = demjson.decode(js_obj) 
+                for image in py_obj.get('initial', []):
+                    if image.get('hiRes'):
+                        images.append(re.sub(r'\._.+_','',image['hiRes']))
+                    elif image.get('large'):
+                        images.append(re.sub(r'\._.+_','',image['large']))
+                return images
+        return images
+
     async def get_product(self, sku:str, country='usa'):
         profile_scraper = 'scraper'
         profile_scraper = f'{profile_scraper}_{country}'
@@ -93,215 +307,51 @@ class CtrlsScraper:
             self.my_pypperteer.close_page_pool(id_page)
         return product
 
+    async def get_data(self, page):
+        elements = dict()
+        for item in self.selectors_new:
+            if not self.selectors_new[item]['all']:
+                elements[item] = await self.my_pypperteer.get_property_from_querySelector(
+                    selector=self.selectors_new[item]['css'],
+                    attr=self.selectors_new[item]['pyppeteer'],
+                    page=page
+                )
+            else:
+                elements[item] = await self.my_pypperteer.get_property_from_querySelectorAll(
+                    selector=self.selectors_new[item]['css'],
+                    attr=self.selectors_new[item]['pyppeteer'],
+                    page=page
+                )
+        return elements
+
     async def get_info_product(self, page, sku):
-        """
-        Esta funcion obtenie los datos del producto de la interfaz del usuario, si
-        el elemento con el precio no existe, asumimos que el producto
-        no se encuentra disponible.
-        """
+        elements = await self.get_data(page)
 
-        price_product_element = await page.querySelector("#priceblock_ourprice")
-        if price_product_element:
-            price_shipping_element = await page.querySelector(
-                "#ourprice_shippingmessage"
-            )
-            if not price_shipping_element: 
-                price_shipping_element = await page.querySelector(
-                    '[data-feature-name="desktop_qualifiedBuyBox"]'
-                )
-        else:
-            price_product_element = await page.querySelector('[data-feature-name="priceInsideBuyBox"]')
-            # Este elemento contine MUCHA mas informacion que el precio de envio
-            # es la unica manera que haya, puede que conlleve a Bugs
-            price_shipping_element = await page.querySelector(
-                '[data-feature-name="desktop_qualifiedBuyBox"]'
-            )
-        price_product_draw = await MyPyppeteer().get_property(
-            price_product_element, "innerText", page
-        )
-        price_shipping_draw = await MyPyppeteer().get_property(
-            price_shipping_element, "innerText", page
-        )
+        price_product = self.get_price_cost(elements['cost_price1'])
+        price_shipping = self.get_price_ship(elements['ship_price1'],
+                                            elements['ship_price1'])
 
-        price_shipping_draw = price_shipping_draw.replace(',','') if price_shipping_draw else ''
-        price_product_draw = price_product_draw.replace(',','') if price_product_draw else ''
+        title = self.get_title(elements['title'])
 
-        price_product_str = self.price_or_err(
-            self.pattern_price, price_product_draw, self.PRICE_NOT_FOUND
-        )
-        if ' no se envía ' in price_shipping_draw:
-            price_shipping_str = self.PRODUCT_NOT_SHIP
-        else:
-            price_shipping_str = self.price_or_err(
-            self.pattern_price_shipping, price_shipping_draw, self.PRICE_NOT_FOUND
-            )
-            if price_shipping_str == self.PRICE_NOT_FOUND:
-                price_shipping_str = self.price_shipping_or_err(
-                    price_shipping_draw, self.PRICE_NOT_FOUND
-                )
+        description = self.get_description(elements['description'])
 
-        price_product = float(price_product_str)
-        price_shipping = float(price_shipping_str)
-        # PRICE PRODUCT AND PRICE SHIPPING #END
-        # TITLE
-        title_element = await page.querySelector("#title")
-        title = await MyPyppeteer().get_property(
-            title_element, "innerText", page
-        )
-        # TITLE #END
-        # IMAGES
-        await page.evaluate("""
-        () => {
-            const event = new MouseEvent('mouseover', {
-            'view': window,
-            'bubbles': true,
-            'cancelable': true
-            });
+        category_root, category_child = self.get_categories(elements['categories'])
 
-            buttons = document.querySelectorAll('#altImages .item')
-            buttons.forEach( btn => {btn.dispatchEvent(event)})
-        }
-        """)
-        images_element = await page.querySelectorAll('#main-image-container img')
-        images_coros = [MyPyppeteer().get_property(
-            image, "src", page
-        ) for image in images_element]
-    
-        images_draw = await asyncio.gather(*images_coros)
-        images = [re.sub(r'\._.+_','',image) for image in images_draw if len(image)<255]
-        # IMAGES #END
+        quantity = self.get_quantity(elements['quantity'])
 
-        # DESCRIPTION
-        description_element = await page.querySelector('#productDescription p')
-        description = await MyPyppeteer().get_property(
-            description_element, "innerText", page
-        )
-        if description:
-            description = re.sub(self.parent_description, '', description)
-        # DESCRIPTION #END
-        # ATTRIBUTES
-        attributes_draw = await page.evaluate(
-            """
-                () => {
-                    const getAttributesByList = (attributes, selector) => {
-                        let rows = document.querySelectorAll(selector)
-                        rows.forEach(row => {
-                            row = row.innerText.split(':')
-                            if (row.length>1) {
-                                let key = row[0].replace(/ /g, '_').toLowerCase()
-                                let value = row[1]
-                                attributes[key] = value
-                            }
-                        });
-                        return attributes
-                    }
-                    const getAttributesByTable = (attributes) => {
-                        let rows = document.querySelectorAll('#prodDetails tr')
-                        rows.forEach(row => {
-                            let key = row.children[0].innerText.replace(/ /g, '_').toLowerCase()
-                            let value = row.children[1].innerText
-                            attributes[key] = value
-                        });
-                        return attributes
-                    }
+        attributes = self.get_attributes(attr_list=elements['attributes_list'],
+                                        attr_table=elements['attributes_table'],
+                                        attr_var=elements['attributes_variations'])
+        dimensions = attributes.pop('dimesions')
+        weight = attributes.pop('weight')
+        sku = attributes.pop('sku') if attributes.get('sku') else sku
 
-                    let attributes = {}
-                    attributes = getAttributesByTable(attributes)
-                    attributes = getAttributesByList(attributes, '#detail-bullets li')
-                    attributes = getAttributesByList(attributes, '#detailBullets li')
-                    return attributes
-                }
-            """
-        )
-        dimensions = dict()
-        weight = 0
-        attributes_elements = await page.querySelectorAll('[id^=variation_] .a-row')
-        attributes_coros = [MyPyppeteer().get_property(
-                attribute, "innerText", page
-            ) for attribute in attributes_elements]
-        attributes_string = await asyncio.gather(*attributes_coros)
-        attributes = dict()
-        for attribute_str in attributes_string:
-            attribute = attribute_str.split(':')
-            name = attribute[0].lower()
-            value = attribute[1].lower()
-            attributes[name] = value
+        images = self.get_images(await page.evaluate("() => document.body.innerHTML"))
 
-        for attribute_key in attributes_draw:
-            if 'dimensiones' in attribute_key:
-                _dimensions_ = dict()
-                # Las dimensiones vienen en este formato "7.1 x 4 x 1.9 inches"
-                dimensions_draw = attributes_draw[attribute_key].replace(',','').split(';')
-                dimensions_draw = dimensions_draw[0].split('x')
-                if len(dimensions_draw) < 3:
-                    continue
-                _dimensions_['x'] = float(dimensions_draw[0])
-                _dimensions_['y'] = float(dimensions_draw[1])
-                dimensions_draw = dimensions_draw[2].strip().split(' ')
-                _dimensions_['z'] = float(dimensions_draw[0])
-                unit = dimensions_draw[1].lower()
-
-                _dimensions_['x'] = self.distance_converter(_dimensions_['x'], unit)
-                _dimensions_['y'] = self.distance_converter(_dimensions_['y'], unit)
-                _dimensions_['z'] = self.distance_converter(_dimensions_['z'], unit)
-                if dimensions:
-                    if (dimensions['x']*dimensions['y']*dimensions['z']) < (_dimensions_['x']*_dimensions_['y']*_dimensions_['z']):
-                        dimensions = _dimensions_
-                else:
-                    dimensions = _dimensions_
-
-            elif 'peso_' in attribute_key:
-                weight_draw = attributes_draw[attribute_key].strip().replace(',','').split(' ')
-                _weight_ = self.weight_converter(float(weight_draw[0]), weight_draw[1].lower())
-
-                if weight < _weight_:
-                    weight = _weight_
-
-            elif 'asin' in attribute_key:
-                sku = attributes_draw[attribute_key].strip()
-
-            elif attribute_key not in (
-                'opinión_media_de_los_clientes',
-                'clasificación_en_los_más_vendidos_de_amazon',
-                'producto_en_amazon.com_desde',
-                'envío_nacional',
-                ) and attributes_draw[attribute_key] not in ('clic', 'aquí') :
-                attributes[attribute_key] = attributes_draw[attribute_key]
-        # ATTRIBUTES #END
-        # CATEGORY
-        categories = await page.evaluate("""
-            _ => {
-                category = document.querySelector('#wayfinding-breadcrumbs_feature_div')
-                if (category) {
-                    return category.innerText.split('›')
-                }
-            }
-        """)
-        if categories:
-            category_root = categories[0].strip()
-            category_child = categories[-1].strip()
-        else:
-            category_root = None
-            category_child = None
-        # CATEGORY #END
-        # QUANTITY
-        quantity = await page.evaluate("""
-            () => {
-                quantity_elemet = document.querySelector("#quantity")
-                if (quantity_elemet) {
-                    return quantity_elemet.children[quantity_elemet.childElementCount-1].value
-                }
-            }
-        """)
-        if  quantity:
-            quantity = int(quantity)
-        else:
-            quantity = 1
-        # QUANTITY #END
         product = {
             "sku": sku,
-            "title": title.replace('"','').replace("'",'') if title else "",
-            "description": description.replace('"','').replace("'",'') if description else "",
+            "title": title,
+            "description": description,
             "attributes": attributes,
             "images": images,
             "category": {"root": category_root, "child": category_child},
@@ -378,72 +428,6 @@ class CtrlsScraper:
                 'skus':skus
             }
 
-    def price_or_err(self, pattern: str, string, value_default, pos=-1) -> str:
-        """
-        Este funcion recibe un patron con AL MENOS un grupo, una cadena de
-        caracteres y una posicion del grupo que se desea retornar.
-
-        En caso que el patron no se encuentre en la cadena retornara un value_default.
-        """
-        if string is None:
-            return 0
-        else:
-            string = string.replace(',', '')
-        try:
-            match = re.search(pattern, string)
-            if match:
-                return match.groups()[pos]
-            else:
-                return value_default
-        except Exception as e:
-            logging.getLogger("log_print_full").error(e)
-            return self.CRITICAL_ERROR
-
-    def price_shipping_or_err(self, string, value_default) -> str:
-        """
-        Esta funcion recibe un string donde se buscara el texto 'FREE Shipping,\
-        si lo encuentra retorna 0, de lo contrario retorna value_default.
-        """
-        if 'FREE Shipping' in string or 'Envío GRATIS' in string:
-            return "0"
-        else:
-            return value_default
-
-    def weight_converter(self, count, unit):
-        converter = {
-            'ounces': 0.0625,
-            'ounce': 0.0625,
-            'onzas': 0.0625,
-            'onza': 0.0625,
-            'oz': 0.0625,
-            'pounds': 1,
-            'pound': 1,
-            'libras': 1,
-            'libra': 1,
-            'kilograms':2.20462,
-            'kilogram':2.20462,
-            'kilogramos':2.20462,
-            'kilogramo':2.20462,
-            'gramos':2204.62,
-            'gramo':2204.62,
-        }
-        return converter[unit]*count
-
-    def distance_converter(self, count, unit):
-        converter = {
-            'inches': 1,
-            'inche': 1,
-            'pulgadas': 1,
-            'pulgada': 1,
-            'in': 1,
-            'centimeters':0.393701,
-            'centimeter':0.393701,
-            'centimetros':0.393701,
-            'centimetro':0.393701,
-            'cm':0.393701,
-        }
-        return converter[unit]*count
-
     async def new_product(self, sku:str, country:str):
         """
         Scrapea un producto y sus variaciones desde la pagina de amazon y lo
@@ -458,7 +442,6 @@ class CtrlsScraper:
 
         logging.getLogger('log_print').info(f'Inserting {len(products)} products in the database')
         await self.insert_database(products)
-
 
     async def get_skus_from_page(self, page):
         skus_draw = await page.evaluate("""
@@ -540,16 +523,15 @@ class CtrlsScraper:
 
         Retorna la data obtenida de la pagina por medio de los selectores
         """
-        async with self.sem_fast:
+        async with self.sem_web_client:
             url = self.url_origin.replace('sku',sku)
 
             logging.getLogger("log_print_full").debug(f'realizando la peticion a {url}')
-            bodyHTML = await WebClient().get(uri=url,
+            bodyHTML = await self.web_client.get(uri=url,
                 cookies=self.cookies,
                 return_data='text'
                 )
             bodyHTML = bodyHTML if bodyHTML else ''
-
             sleep = 2 + random()*(2*self.sleep_avg - 2*2)
             data = self.extractor.extract(bodyHTML)
             data['sku'] = sku
@@ -563,66 +545,34 @@ class CtrlsScraper:
 
         return data
 
-    def get_price(self,data):
-        sale_price_regex = self.price_or_err(
-            self.pattern_price, data["sale_price"], self.PRICE_NOT_FOUND
-        )
-        logging.getLogger("log_print_full").debug(
-            f'Price scraper: {data["sale_price"]}. Price regex: {sale_price_regex}')
-        return float(sale_price_regex)
-
-    def get_price_ship(self,data):
-        if not data["ship_price2"] or not data["ship_price1"]:
-            return float(self.PRODUCT_NOT_AVAILABLE)
-        if ' no se envía ' in data["ship_price2"]:
-            return float(self.PRODUCT_NOT_SHIP)
-        
-        price_shipping_str = self.price_or_err(
-        self.pattern_price_shipping, data["ship_price1"], self.PRICE_NOT_FOUND
-        )
-
-        if price_shipping_str != self.PRICE_NOT_FOUND:
-            return float(price_shipping_str)
-
-        price_shipping_str = self.price_shipping_or_err(
-                data["ship_price1"], self.PRICE_NOT_FOUND
-            )
-        return float(price_shipping_str)
-
-    def get_quantity(self, data):
-        try:
-            return int(data["quantity"])
-        except TypeError:
-            return 0
-
     async def update_product(self, product):
         product_data = await self.get_data_fast(product['provider_sku'])
-        cost_price = self.get_price(product_data)
-        ship_price = self.get_price_ship(product_data)
-        quantity = self.get_quantity(product_data)
+        product['cost_price'] = self.get_price_cost(product_data['cost_price'])
+        product['ship_price'] = self.get_price_ship(product_data['ship_price1'],
+                                                    product_data['ship_price2'])
+        product['quantity'] = self.get_quantity(product_data['quantity']) if (
+                                                product['cost_price'] > 0) else 0
+        product['last_update'] = datetime.now()
+        
         message = {
-            'cost_price': cost_price,
-            'ship_price': ship_price,
-            'quantity': quantity,
+            'cost_price': product_data['cost_price'],
+            'ship_price': product['ship_price'],
+            'quantity': product['quantity'],
             'link': product['provider_link'],
         }
         logging.getLogger('log_print_full').debug(json.dumps(message, indent=True))
 
-        product['cost_price'] = cost_price
-        product['ship_price'] = ship_price
-        product['quantity'] = quantity if cost_price > 0 else 0
-        product['last_update'] = datetime.now()
         return product
 
-    async def update_products_olds(self, limit:int=100):
+    async def update_products(self, chunk:int=100, sleep_end=60):
         """
         Actualiza los producto en la base de datos. Desde el más viejo hasta el más actualizado.
         """
         count = 0
         while True:
-            logging.getLogger("log_print_full").info(f"Obteniendo {limit} registros de la DB.")
+            logging.getLogger("log_print_full").info(f"Obteniendo {chunk} registros de la DB.")
             start = datetime.now()
-            products = await ProductModel().select(limit=limit)
+            products = await ProductModel().select(limit=chunk)
             shuffle(products)
             if products[0]['last_update'] > (
                 datetime.now() - timedelta(days=5)):
@@ -631,11 +581,10 @@ class CtrlsScraper:
             await asyncio.gather(*updates_coros)
             await ProductModel().insert(products)
             count += 1
-            logging.getLogger("log_print_full").info(f"Fin de la ronda N° {count}. \
-Tiempo de actualizacion de los {limit} productos:{(datetime.now()-start).total_seconds()}")
+            logging.getLogger("log_print_full").info(f"Fin de la ronda N° {count}. Tiempo de actualizacion de los {chunk} productos:{(datetime.now()-start).total_seconds()}")
             if count % 5 == 0:
-                sleep = 60
+                sleep = sleep_end
             else:
-                sleep = 10
+                sleep = sleep_end/6
             logging.getLogger("log_print_full").info(f"Durmiendo {sleep} seg.")
             await asyncio.sleep(sleep)

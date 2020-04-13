@@ -1,0 +1,67 @@
+title:
+    all: False
+    css: '#title, #productTitle'
+    type: Text
+    pyppetter: innerText
+
+cost_price1:
+    all: False
+    css: '#priceblock_ourprice, #priceblock_saleprice'
+    type: Text
+    pyppetter: innerText
+
+cost_price2:
+    all: False
+    css: '[data-feature-name="priceInsideBuyBox"]'
+    type: Text
+    pyppetter: innerText
+
+ship_price1:
+    all: False
+    css: '#ourprice_shippingmessage'
+    type: Text
+    pyppetter: innerText
+
+ship_price2:
+    all: False
+    css: '#price-shipping-message, #buyNewInner'
+    type: Text
+    pyppetter: innerText
+
+description:
+    all: False
+    css: "#productDescription p"
+    type: Text
+    pyppetter: innerText
+
+categories:
+    all: False
+    css: '#wayfinding-breadcrumbs_feature_div'
+    type: Text
+    pyppetter: innerText
+
+quantity:
+    all: False
+    css: '#quantity option:last-child'
+    type: Attribute
+    attribute: value
+    pyppetter: value
+attributes_list:
+    all: True
+    css: "#detail-bullets li, #detailBullets li"
+    type: Text
+    attribute: innerText
+attributes_table:
+    all: True
+    css: "#prodDetails td"
+    type: Text
+    attribute: innerText
+attributes_variations:
+    all: True
+    css: "[id^=variation_] .a-row"
+    type: Text
+    attribute: innerText
+
+captcha:
+    css: '[id="captchacharacters"]'
+    type: Text

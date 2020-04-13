@@ -1,7 +1,7 @@
 title:
-    css: '#title'
+    css: '#title, #productTitle'
     type: Text
-sale_price:
+cost_price:
     css: '#priceblock_ourprice, #priceblock_saleprice'
     type: Text
 ship_price1:

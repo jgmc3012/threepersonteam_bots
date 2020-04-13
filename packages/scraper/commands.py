@@ -47,7 +47,7 @@ class AllCommands:
 
         def handle(self):
             store_id = int(self.option('store-id')) if self.option('store-id') else None
-            AppLoop().get_loop().run_until_complete(CtrlsScraper().update_products_olds())
+            AppLoop().get_loop().run_until_complete(CtrlsScraper().update_products())
 
     class ScraperUpdateProductTest(Command):
         """
@@ -59,4 +59,7 @@ class AllCommands:
 
         def handle(self):
             sku = self.option('sku')
-            AppLoop().get_loop().run_until_complete(CtrlsScraper().get_data_fast(sku))
+            AppLoop().get_loop().run_until_complete(CtrlsScraper().update_product({
+                'provider_sku':sku,
+                'provider_link': f'https://amazon.com/-/es/dp/{sku}'
+            }))

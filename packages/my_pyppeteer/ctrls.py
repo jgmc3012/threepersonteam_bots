@@ -164,6 +164,24 @@ class MyPyppeteer(metaclass=SingletonClass):
         for attr, value in kwargs.items():
             await page.evaluate(f'(obj) => obj.{attr} = "{value}"', obj)
 
+    async def get_property_from_querySelector(self, selector:str, attr:str, page=None):
+        if not page:
+            page = self.page
+        return await page.evaluate('''() => {
+            obj = document.querySelector("{selector}")
+            if (obj) {
+                return obj.{attr}
+            }
+        }'''.format(selector=selector,attr=attr))
+
+    async def get_property_from_querySelectorAll(self, selector:str, attr:str, page=None):
+        if not page:
+            page = self.page
+        return await page.evaluate('''() => {
+            obj = document.querySelectorAll("{selector}")
+            return obj.map(node => node.{attr})
+        }'''.format(selector=selector,attr=attr))
+
     async def count_pages(self):
         self.browser, self.page = await MyPyppeteer().connect_browser()
         print(f'{len(await self.browser.pages())}')
