@@ -22,7 +22,7 @@ from packages.core.utils.web_client import WebClient
 from .models import ProductModel
 from .models import AttributeModel
 from .models import PictureModel
-
+from .models import insert_items_in_database
 from .utils import price_shipping_or_err
 from .utils import price_or_err
 from .utils import weight_converter
@@ -43,7 +43,7 @@ class CtrlsScraper:
         "-4": "PRODUCT_NOT_SHIP",
         "-5": "CRITICAL_ERROR",
     }
-    sem = asyncio.Semaphore(8)
+    sem = asyncio.Semaphore(1)
     _sem_web_client_ = None
     sleep_avg = 5
 
@@ -62,6 +62,9 @@ class CtrlsScraper:
     _extractor_ = None
     _web_client_ = None
     _selectors_new_ = None
+
+    def __init__(self, country:str='usa'):
+        self.country = country
 
     @property
     def extractor(self):
@@ -90,7 +93,8 @@ class CtrlsScraper:
             )
         return self._selectors_new_
 
-    async def init_my_pypperteer(self, profile:str):
+    async def init_my_pypperteer(self):
+        profile = f'scraper_{self.country}'
         if not self.my_pypperteer:
             self.my_pypperteer = MyPyppeteer(profile)
             await self.my_pypperteer.connect_browser()
@@ -113,16 +117,15 @@ class CtrlsScraper:
         return float(sale_price_regex)
 
     def _get_price_ship(self, price_str)->str:
-        price_shipping_str = price_or_err(
-        self.pattern_price_shipping, price_str, self.PRICE_NOT_FOUND
-        )
+        price_shipping_str = price_shipping_or_err(
+                price_str, self.PRICE_NOT_FOUND
+            )
 
         if price_shipping_str != self.PRICE_NOT_FOUND:
             return price_shipping_str
 
-        return price_shipping_or_err(
-                price_str, self.PRICE_NOT_FOUND
-            )
+        return  price_or_err(self.pattern_price_shipping,
+                            price_str, self.PRICE_NOT_FOUND)
 
     def get_price_ship(self,price_str_1, price_str_2)->float:
         """
@@ -213,7 +216,8 @@ class CtrlsScraper:
             if len(item) > 1:
                 key = item[0].strip().replace(' ', '_').lower()
                 value = item[1].strip()
-                attributes[key] = value
+                if key and value:
+                    attributes[key] = value
         return attributes
     
     def get_attributes_from_a_table(self, attr_table):
@@ -227,7 +231,8 @@ class CtrlsScraper:
         for col in grouper(attr_table,2,''):
             key = col[0].strip().replace(' ', '_').lower()
             value = col[1].strip()
-            attributes[key] = value
+            if key and value:
+                attributes[key] = value
         return attributes      
 
     def get_attributes(self, attr_list:list, attr_table:list, attr_var:list)->dict:
@@ -270,7 +275,7 @@ class CtrlsScraper:
             if "'colorImages':" in line:
                 line = line.strip()
                 start = line.index("'colorImages':") + len("'colorImages':")
-                js_obj = line[start-1:-2]
+                js_obj = line[start:-1]
                 py_obj = demjson.decode(js_obj) 
                 for image in py_obj.get('initial', []):
                     if image.get('hiRes'):
@@ -280,58 +285,45 @@ class CtrlsScraper:
                 return images
         return images
 
-    async def get_product(self, sku:str, country='usa'):
-        profile_scraper = 'scraper'
-        profile_scraper = f'{profile_scraper}_{country}'
-        await self.init_my_pypperteer(profile_scraper)
-        async with self.sem:
-            id_page, page = self.my_pypperteer.get_page_pool()
+    def get_skus_data(self, bodyHTML:str)->list:
+        """
+        Obtiene los skus de las variones de un item si este tiene variaciones.
+        """
+        read_JSON = False
+        dataToReturn = False
+        js_obj = '{'
+        for line in bodyHTML.split('\n'):
+            if dataToReturn:
+                if not read_JSON and 'dataToReturn' in line:
+                    read_JSON = True
+                elif not ';' in line:
+                    js_obj += line
+                else:
+                    js_obj += '}'
+                    break
+            elif 'twister-js-init-dpx-data' in line:
+                dataToReturn = True
+        try:
+            py_obj = demjson.decode(js_obj)
+            variations_data = py_obj['asinVariationValues']
+        except Exception:
+            logging.getLogger('log_print').error(f'Error extrayendo los datos de las variacion en del dataToReturn : {Exception}.')
+            variations_data = dict()
 
-            url = self.url_origin.replace('sku',sku)
-            await self.goto(url,page)
-            data = await self.get_product_amazon(page, sku)
-            self.my_pypperteer.close_page_pool(id_page)
-        products = data['products']
-        products_coros = [self.get_products(sku) for sku in data['skus']]
-        if products_coros:
-            products += await asyncio.gather(*products_coros)
-        return products
+        return list(variations_data.keys())
 
-    async def get_products(self, sku):
-        async with self.sem:
-            id_page, page = self.my_pypperteer.get_page_pool()
-
-            url = self.url_origin.replace('sku',sku)
-            await self.goto(url,page)
-            product = await self.get_info_product(page, sku)
-            self.my_pypperteer.close_page_pool(id_page)
-        return product
-
-    async def get_data(self, page):
-        elements = dict()
-        for item in self.selectors_new:
-            if not self.selectors_new[item]['all']:
-                elements[item] = await self.my_pypperteer.get_property_from_querySelector(
-                    selector=self.selectors_new[item]['css'],
-                    attr=self.selectors_new[item]['pyppeteer'],
-                    page=page
-                )
-            else:
-                elements[item] = await self.my_pypperteer.get_property_from_querySelectorAll(
-                    selector=self.selectors_new[item]['css'],
-                    attr=self.selectors_new[item]['pyppeteer'],
-                    page=page
-                )
-        return elements
-
-    async def get_info_product(self, page, sku):
-        elements = await self.get_data(page)
+    def get_info_product(self, elements:dict, sku:str, bodyHTML:str)->dict:
+        """
+        Retorn la informacion completa de un producto si este existe. de lo contrario
+        retorna un diccionario vacio
+        """
+        title = self.get_title(elements['title'])
+        if not title.strip():
+            return dict()
 
         price_product = self.get_price_cost(elements['cost_price1'])
         price_shipping = self.get_price_ship(elements['ship_price1'],
                                             elements['ship_price1'])
-
-        title = self.get_title(elements['title'])
 
         description = self.get_description(elements['description'])
 
@@ -342,11 +334,11 @@ class CtrlsScraper:
         attributes = self.get_attributes(attr_list=elements['attributes_list'],
                                         attr_table=elements['attributes_table'],
                                         attr_var=elements['attributes_variations'])
-        dimensions = attributes.pop('dimesions')
+        dimensions = attributes.pop('dimensions')
         weight = attributes.pop('weight')
         sku = attributes.pop('sku') if attributes.get('sku') else sku
 
-        images = self.get_images(await page.evaluate("() => document.body.innerHTML"))
+        images = self.get_images(bodyHTML)
 
         product = {
             "sku": sku,
@@ -363,77 +355,83 @@ class CtrlsScraper:
         logging.getLogger("log_print_full").debug(f"{product['title']} {product['price']} {product['sku']}")
         return product
 
-    async def goto(self, url:str, page):
-        await page.goto(url)
-        while True:
-            logging.getLogger("log_print_full").debug(f"URL: {url}")
-            input_chatpcha = await page.querySelector('[id="captchacharacters"]')
-            if not input_chatpcha:
-                break
-            img_draw = await page.querySelector('form img')
-            img = await self.my_pypperteer.get_attribute(img_draw,'src',page)
-            await page.click(input_chatpcha)
-            value_chatpcha = input(f'Ingrese la solucion del chatpcha {img} :')
-            await page.keyboard.type(value_chatpcha)
-            page = await self.my_pypperteer.change_page(page)
-            await page.goto(url)
+    async def go_to_amazon(self, url:str, func, *args, **kwargs):
+        await self.init_my_pypperteer()
+        async with self.sem:
+            id_page, page = self.my_pypperteer.get_page_pool()
 
-    async def get_product_amazon(self, page, sku):
-        variations_element = await page.evaluate("""
-        () => {
-            let variationsElement = document.querySelectorAll('[id^="variation_"]')
-            return Array.from(variationsElement).map( variation =>{
-                name = variation.getAttribute('id').replace('variation_', '')
-                select = variation.querySelector('select')
-                return {
-                    name,
-                    select
-                }
-            })
-        }
-        """)
-        products = list()
-        skus = list()
-        if variations_element:
-            read_JSON = False
-            json_string = ''
-            bodyHTML = bodyHTML = await page.evaluate("() => document.body.innerHTML")
-            for line in bodyHTML.split('\n'):
-                if read_JSON:
-                    if not ';' in line:
-                        json_string += line
-                    else:
-                        json_string += '}'
-                        break
-                elif 'twister-js-init-dpx-data' in line:
-                    read_JSON = True
-            variations_data = await page.evaluate(
-                '() => {\n'+json_string+'\n try {\n return dataToReturn.asinVariationValues} \n catch (error) {console.error(error)} \n'+'}'
-            )
-            if variations_data:
-                skus += variations_data.keys()
-            if sku in skus:
-                skus.remove(sku)
-                product = await self.get_info_product(page, sku)
-                products.append(product)
-            return {
-                'products':products,
-                'skus':skus
-            }
-        else:
-            product = await self.get_info_product(page, sku)
-            products.append(product)
-            return {
-                'products':products,
-                'skus':skus
-            }
+            while True:
+                logging.getLogger("log_print_full").debug(f"URL: {url}")
+                input_chatpcha = await page.querySelector('[id="captchacharacters"]')
+                if not input_chatpcha:
+                    break
+                img_draw = await page.querySelector('form img')
+                img = await self.my_pypperteer.get_attribute(img_draw,'src',page)
+                await page.click(input_chatpcha)
+                value_chatpcha = input(f'Ingrese la solucion del chatpcha {img} :')
+                await page.keyboard.type(value_chatpcha)
+                page = await self.my_pypperteer.change_page(page)
+                await page.goto(url)
 
-    async def new_product(self, sku:str, country:str):
+            response = await func(page, *args, **kwargs)
+            self.my_pypperteer.close_page_pool(id_page)
+        return response
+
+    async def get_product_and_variations_with_pyppeteer(self, sku:str):
+        url = self.url_origin.replace('sku',sku)
+
+        elements, bodyHTML = await self.go_to_amazon(url,func=self.get_data_with_pyppeteer)
+        skus = self.get_skus_data(bodyHTML)
+
+        if sku in skus:
+            skus.remove(sku)
+        
+        product = self.get_info_product(elements, sku, bodyHTML)
+
+        products = [product] if product else []
+        products_coros = [self.get_product_with_pyppeteer(sku) for sku in skus]
+        if products_coros:
+            products += await asyncio.gather(*products_coros)
+        return [product for product in products if product]
+
+    async def get_product_with_pyppeteer(self, sku:str):
+        url = self.url_origin.replace('sku',sku)
+        elements, bodyHTML = await self.go_to_amazon(url, func=self.get_data_with_pyppeteer)
+
+        product = self.get_info_product(elements=elements, sku=sku,
+                                            bodyHTML=bodyHTML)
+        return product
+
+    async def get_data_with_pyppeteer(self, page):
+        """
+        Retorna los elementos predefinidos por los selectores
+        en el respectivo fichero .yaml y el cuerpo HTMl de la pagina
+        """
+        elements = dict()
+        for item in self.selectors_new:
+            if not self.selectors_new[item]['all']:
+                element = await self.my_pypperteer.get_property_from_querySelector(
+                    selector=self.selectors_new[item]['css'],
+                    attr=self.selectors_new[item]['pyppeteer'],
+                    page=page
+                )
+                elements[item] = element if element else ''
+            else:
+                elements[item] = await self.my_pypperteer.get_property_from_querySelectorAll(
+                    selector=self.selectors_new[item]['css'],
+                    attr=self.selectors_new[item]['pyppeteer'],
+                    page=page
+                )
+
+        bodyHTML = await page.evaluate("() => document.body.innerHTML")
+        return elements, bodyHTML
+
+    async def new_product_with_pyppeteer(self, sku:str):
         """
         Scrapea un producto y sus variaciones desde la pagina de amazon y lo
         inserta en la base de datos
         """
-        products_draw = await self.get_product(sku, country)
+        products_draw = await self.get_product_and_variations_with_pyppeteer(sku)
         products = list()
         for _products_ in products_draw:
             for p in _products_:
@@ -441,7 +439,7 @@ class CtrlsScraper:
                     products.append(p)
 
         logging.getLogger('log_print').info(f'Inserting {len(products)} products in the database')
-        await self.insert_database(products)
+        await insert_items_in_database(products)
 
     async def get_skus_from_page(self, page):
         skus_draw = await page.evaluate("""
@@ -452,69 +450,36 @@ class CtrlsScraper:
         """)
         return [sku for sku in skus_draw if sku]
 
-    async def scraper_pages(self, uri:str, country:str, number_page:int=0):
+    async def get_news_skus_in_page(self, skus:list):
+        skus = set(skus)
+        logging.getLogger('log_print').info(f'Products found on the page: {len(skus)}')
+        skus_in_database = await ProductModel().skus_in_database()
+        return [sku for sku in skus if sku not in skus_in_database]
+
+    async def scraper_pages_with_pyppeteer(self, uri:str, number_page:int=0):
         """
         - Entra a una pagina de busqueda en Amazon.com
         - Selecciona todos sku.
         - Va de pagina en pagina scrapeando dicho producto
         - Los inserta en la base de datos
         """
-        profile_scraper = 'scraper'
-        profile_scraper = f'{profile_scraper}_{country}'
         while True:
             number_page += 1
             logging.getLogger('log_print').info(f'Scraping page number {number_page}')
-            await self.init_my_pypperteer(profile_scraper)
-            async with self.sem:
-                id_page, page = self.my_pypperteer.get_page_pool()
-                await self.goto(f'{uri}&page={number_page}', page)
-                skus = await self.get_skus_from_page(page)
-                self.my_pypperteer.close_page_pool(id_page)
+            url = f'{uri}&page={number_page}'
 
-            if not skus:
+            all_the_skus = await self.go_to_amazon(url, func=self.get_skus_from_page)
+
+            if not all_the_skus:
                 logging.getLogger('log_print').info(f'Finish Scraping in page number {number_page-1}')
                 break
-            logging.getLogger('log_print').info(f'Products found on the page: {len(skus)}')
-            skus_in_database_raw = await ProductModel().select(fields=['provider_sku'])
-            skus_in_database = {i['provider_sku'] for i in skus_in_database_raw}
-            skus = [sku for sku in skus if sku not in skus_in_database]
-            logging.getLogger('log_print').info(f'New products to scrape: {len(skus)}')
+            skus = self.get_news_skus_in_page(all_the_skus)
+            logging.getLogger('log_print').info(f'New products for scrape in page: {len(skus)}')
             if not skus:
                 continue
-            products_coros = [self.new_product(sku, country) for sku in skus]
+
+            products_coros = [self.new_product_with_pyppeteer(sku) for sku in skus]
             await asyncio.gather(*products_coros)
-
-    async def insert_database(self, products_draw:list):
-        products = list()
-        attributes = dict()
-        pictures = dict()
-        for product in products_draw:
-            if not product['title'] or len(product['images'])<1:
-                continue
-            products.append({
-                'available': 1,
-                'modifiable':1,
-                'title':product['title'][:300], # :str, (max_length=60)
-                'cost_price':product['price']['product'], # :float, (null=True)
-                'ship_price':product['price']['shipping'], # :float,(null=True)
-                'provider_sku':product['sku'], # :str, (max_length=50, unique=True)
-                'provider_link':self.url_origin.replace('sku',product['sku']), # :str, (max_length=255, unique=True)
-                'image':product['images'][0].replace('.jpg', '._AC_UY150_ML3_.jpg'), # :liststr, (max_length=255)
-                'category_name':product['category']['child'] if product['category']['child'] else '', # models.CharField(max_length=60) #"Temporal." Para el scraper de amazon
-                'description':product['description'], # :str, (null=True, default=None)
-                'quantity':product['quantity'], # :int,
-                'last_update': datetime.now(), # DateTimeField(default=timezone.localtime)
-                'height': product['dimensions'].get("x"), # models.FloatField(default=None, null=True)
-                'width': product['dimensions'].get("y"), # models.FloatField(default=None, null=True)
-                'length': product['dimensions'].get("z"), # models.FloatField(default=None, null=True)
-                'weight': product['weight'] if product['weight'] else None, # models.FloatField(default=None, null=True)
-            })
-            attributes[product['sku']] = product['attributes']
-            pictures[product['sku']] = product['images']
-
-        await ProductModel().insert(products)
-        await AttributeModel().insert(attributes)
-        await PictureModel().insert(pictures)
 
     async def get_data_fast(self, sku:str):
         """

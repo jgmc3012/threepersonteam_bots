@@ -69,10 +69,14 @@ class MyPyppeteer(metaclass=SingletonClass):
     async def init_pool_pages(self, number_pages:int)->dict:
         if not self.browser:
             await self.connect_browser()
-        for i in range(number_pages):
-            self.pool[i] = await self.browser.newPage()
-            self.pool[i].setDefaultNavigationTimeout(self.TimeoutDefault)
-            self.pool['availables'].append(i)
+        pages = await self.browser.pages()
+        pages[0].setDefaultNavigationTimeout(self.TimeoutDefault)
+        self.pool[0] = pages[0]
+        self.pool['availables'].append(0)
+        # for i in range(number_pages):
+        #     self.pool[i] = await self.browser.newPage()
+        #     self.pool[i].setDefaultNavigationTimeout(self.TimeoutDefault)
+        #     self.pool['availables'].append(i)
         return self.pool
 
     async def change_page(self, page):
@@ -167,20 +171,20 @@ class MyPyppeteer(metaclass=SingletonClass):
     async def get_property_from_querySelector(self, selector:str, attr:str, page=None):
         if not page:
             page = self.page
-        return await page.evaluate('''() => {
-            obj = document.querySelector("{selector}")
-            if (obj) {
+        return await page.evaluate('''() => {{
+            obj = document.querySelector('{selector}')
+            if (obj) {{
                 return obj.{attr}
-            }
-        }'''.format(selector=selector,attr=attr))
+            }}
+        }}'''.format(selector=selector,attr=attr))
 
     async def get_property_from_querySelectorAll(self, selector:str, attr:str, page=None):
         if not page:
             page = self.page
-        return await page.evaluate('''() => {
-            obj = document.querySelectorAll("{selector}")
-            return obj.map(node => node.{attr})
-        }'''.format(selector=selector,attr=attr))
+        return await page.evaluate('''() => {{
+            obj = document.querySelectorAll('{selector}')
+            return Array.from(obj).map(node => node.{attr})
+        }}'''.format(selector=selector,attr=attr))
 
     async def count_pages(self):
         self.browser, self.page = await MyPyppeteer().connect_browser()

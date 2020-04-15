@@ -19,7 +19,8 @@ class AllCommands:
         def handle(self):
             sku = self.option('sku')
             country = self.option('country') if self.option('country') else 'usa'
-            AppLoop().get_loop().run_until_complete(CtrlsScraper().get_product(sku, country))
+            AppLoop().get_loop().run_until_complete(
+                CtrlsScraper(country).get_product_with_pyppeteer(sku))
 
     class ScraperPage(Command):
         """
@@ -35,7 +36,8 @@ class AllCommands:
             country = self.option('country') if self.option('country') else 'usa'
             init_page = int(self.option('init-page'))-1 if self.option('init-page') else 0
             uri = self.option('uri')
-            AppLoop().get_loop().run_until_complete(CtrlsScraper().scraper_pages(uri, country, init_page))
+            AppLoop().get_loop().run_until_complete(
+                CtrlsScraper(country).scraper_pages_with_pyppeteer(uri, init_page))
 
     class ScraperUpdateProduct(Command):
         """

@@ -1,0 +1,5 @@
+skus:
+    all: True
+    css: '.s-result-list > div'
+    type: Text
+    attribute: data-asin

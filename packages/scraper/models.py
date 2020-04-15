@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from packages.core.db import ConnectionsDB
 from packages.core.utils.config import Config
 
@@ -48,6 +50,10 @@ class ProductModel():
                 query += f' {limit}'
         query += ';'
         return await(await ConnectionsDB().get_connection(self.name_connection)).select(query)
+
+    async def skus_in_database(self):
+        skus_in_database_raw = await self.select(fields=['provider_sku'])
+        return {i['provider_sku'] for i in skus_in_database_raw}
 
 class AttributeModel():
     """
@@ -103,3 +109,35 @@ class PictureModel():
         return await (
             await ConnectionsDB().get_connection(self.name_connection)
         ).insert(pictures, 'store_picture', self.keys)
+
+async def insert_items_in_database(self, products_draw:list):
+    products = list()
+    attributes = dict()
+    pictures = dict()
+    for product in products_draw:
+        if not product['title'] or len(product['images'])<1:
+            continue
+        products.append({
+            'available': 1,
+            'modifiable':1,
+            'title':product['title'][:300], # :str, (max_length=60)
+            'cost_price':product['price']['product'], # :float, (null=True)
+            'ship_price':product['price']['shipping'], # :float,(null=True)
+            'provider_sku':product['sku'], # :str, (max_length=50, unique=True)
+            'provider_link':self.url_origin.replace('sku',product['sku']), # :str, (max_length=255, unique=True)
+            'image':product['images'][0].replace('.jpg', '._AC_UY150_ML3_.jpg'), # :liststr, (max_length=255)
+            'category_name':product['category']['child'] if product['category']['child'] else '', # models.CharField(max_length=60) #"Temporal." Para el scraper de amazon
+            'description':product['description'], # :str, (null=True, default=None)
+            'quantity':product['quantity'], # :int,
+            'last_update': datetime.now(), # DateTimeField(default=timezone.localtime)
+            'height': product['dimensions'].get("x"), # models.FloatField(default=None, null=True)
+            'width': product['dimensions'].get("y"), # models.FloatField(default=None, null=True)
+            'length': product['dimensions'].get("z"), # models.FloatField(default=None, null=True)
+            'weight': product['weight'] if product['weight'] else None, # models.FloatField(default=None, null=True)
+        })
+        attributes[product['sku']] = product['attributes']
+        pictures[product['sku']] = product['images']
+
+    await ProductModel().insert(products)
+    await AttributeModel().insert(attributes)
+    await PictureModel().insert(pictures)
