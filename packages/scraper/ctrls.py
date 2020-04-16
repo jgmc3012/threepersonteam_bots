@@ -426,7 +426,7 @@ class CtrlsScraper:
             if not all_the_skus:
                 logging.getLogger('log_print').info(f'Finish Scraping in page number {number_page-1}')
                 break
-            skus = self.get_news_skus_in_page(all_the_skus)
+            skus = await self.get_news_skus_in_page(all_the_skus)
             logging.getLogger('log_print').info(f'New products for scrape in page: {len(skus)}')
             if not skus:
                 continue
@@ -542,8 +542,8 @@ class PyppeteerScraper(CtrlsScraper):
 
 
 class CurlScraper(CtrlsScraper):
-    _sem_ = asyncio.Semaphore(1)
-    sleep_avg = 5
+    _sem_ = asyncio.Semaphore(4)
+    sleep_avg = 7
     cookies = {
         "session-id":"132-4528637-2870205",
         "ubid-main":"130-0267183-0060640",

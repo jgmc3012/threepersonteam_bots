@@ -28,7 +28,9 @@ def price_shipping_or_err(string, value_default, pattern) -> str:
     if 'FREE Shipping' in string or 'Envío GRATIS' in string:
         return "0"
     match = re.search(pattern, string)
-    return match.group('price').replace(',', '')
+    if match:
+        return match.group('price').replace(',', '')
+    return value_default
 
 def weight_converter(quantity, unit:str)->float:
     converter = {
