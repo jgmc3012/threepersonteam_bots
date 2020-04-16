@@ -45,6 +45,7 @@ def weight_converter(quantity, unit:str)->float:
         'kilogram':2.20462,
         'kilogramos':2.20462,
         'kilogramo':2.20462,
+        'kg':2.20462,
         'gramos':0.00220462,
         'gramo':0.00220462,
         'gr':0.00220462,
