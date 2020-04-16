@@ -138,7 +138,7 @@ async def insert_items_in_database(products_draw:list):
         })
         attributes[product['sku']] = product['attributes']
         pictures[product['sku']] = product['images']
-
-    await ProductModel().insert(products)
-    await AttributeModel().insert(attributes)
-    await PictureModel().insert(pictures)
+    if products:
+        await ProductModel().insert(products)
+        await AttributeModel().insert(attributes)
+        await PictureModel().insert(pictures)

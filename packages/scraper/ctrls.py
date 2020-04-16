@@ -346,7 +346,8 @@ class CtrlsScraper:
         """
         products = await self.get_product_and_variations(sku)
         logging.getLogger('log_print').info(f'Inserting {len(products)} products in the database')
-        await insert_items_in_database(products)
+        if products:
+            await insert_items_in_database(products)
 
     async def get_news_skus_in_page(self, skus:list):
         skus = set(skus)
