@@ -544,7 +544,7 @@ class PyppeteerScraper(CtrlsScraper):
 
 class CurlScraper(CtrlsScraper):
     _sem_ = asyncio.Semaphore(4)
-    sleep_avg = 7
+    sleep_avg = 10
     cookies = {
         "session-id":"132-4528637-2870205",
         "ubid-main":"130-0267183-0060640",
@@ -610,6 +610,7 @@ class CurlScraper(CtrlsScraper):
                     if not bodyHTML:
                         logging.getLogger("log_print_full").warning(f"No hubo un error en la respuesta. intenta {vuelta}, reintentando peticion en {sleep}seg")
                         if vuelta > 3:
+                            sleep = 900
                             bodyHTML = 'xxx'
                         else:
                             await asyncio.sleep(sleep)
