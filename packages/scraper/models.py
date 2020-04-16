@@ -140,5 +140,6 @@ async def insert_items_in_database(products_draw:list):
         pictures[product['sku']] = product['images']
     if products:
         await ProductModel().insert(products)
-        await AttributeModel().insert(attributes)
         await PictureModel().insert(pictures)
+        if attributes:
+            await AttributeModel().insert(attributes)
