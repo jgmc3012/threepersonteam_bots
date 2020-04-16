@@ -28,18 +28,6 @@ ship_price2:
     type: Text
     pyppeteer: innerText
 
-description:
-    multiple: False
-    css: "#productDescription p"
-    type: Text
-    pyppeteer: innerText
-
-categories:
-    multiple: False
-    css: '#wayfinding-breadcrumbs_feature_div'
-    type: Text
-    pyppeteer: innerText
-
 quantity:
     multiple: False
     css: '#quantity option:last-child'
@@ -47,33 +35,15 @@ quantity:
     attribute: value
     pyppeteer: value
 
-attributes_list:
-    multiple: True
-    css: "#detail-bullets li, #detailBullets li"
-    type: Text
-    pyppeteer: innerText
-
-attributes_table:
-    multiple: True
-    css: "#prodDetails td"
-    type: Text
-    pyppeteer: innerText
-
-attributes_variations:
-    multiple: True
-    css: "[id^=variation_] .a-row"
-    type: Text
-    pyppeteer: innerText
-
-captcha:
-    multiple: False
-    css: '#captchacharacters'
-    type: Text
-    pyppeteer: innerText
-
 currency:
     multiple: False
     css: '#cerberus-data-metrics'
     type: Attribute
     attribute: data-asin-currency-code
     pyppeteer: data-asin-currency-code
+
+captcha:
+    multiple: False
+    css: '[id="captchacharacters"]'
+    type: Text
+    pyppeteer: innerText

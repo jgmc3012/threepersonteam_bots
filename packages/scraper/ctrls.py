@@ -44,67 +44,17 @@ class CtrlsScraper:
         "-5": "CRITICAL_ERROR",
     }
     sem = asyncio.Semaphore(1)
-    _sem_web_client_ = None
-    sleep_avg = 5
+    path_update = f'{os.path.dirname(os.path.realpath(__file__))}/storage/selectors_update.yaml'
+    path_new = f'{os.path.dirname(os.path.realpath(__file__))}/storage/selectors_new.yaml'
+    path_skus = f'{os.path.dirname(os.path.realpath(__file__))}/storage/selectors_skus.yaml'
 
-    my_pypperteer = None
-    url_origin = "https://www.amazon.com.mx/-/es/dp/sku?psc=1"
+    my_pyppeteer = None
+    url_origin = "https://www.amazon.com/-/es/dp/sku?psc=1"
     parent_description = re.compile(r'((\w*://)?\w+\.\w+\.\w+)|([\w\-_\d\.]+@[\w\-_\d]+(\.\w+)+)')
-    pattern_price = re.compile(r'(\d+\.?\d*)')
-    pattern_price_shipping = re.compile(r'(\d+\.?\d*) [Ee]nvío')
+    pattern_price = re.compile(r'(?P<currency>\w*\$)\s*(?P<price>\d+([,.]?\d*)*)') 
+    pattern_price_shipping = re.compile(r'(?P<price>\d+\.?\d*) [Ee]nvío')
 
-    cookies = {
-        "session-id":"132-4528637-2870205",
-        "ubid-main":"130-0267183-0060640",
-        "lc-main":"es_US",
-        "i18n-prefs":"USD",
-    }
-    _extractor_ = None
-    _web_client_ = None
-    _selectors_new_ = None
-
-    def __init__(self, country:str='usa'):
-        self.country = country
-
-    @property
-    def extractor(self):
-        if not self._extractor_:
-            # Create an Extractor by reading from the YAML file
-            self._extractor_ = Extractor.from_yaml_file(f'{os.path.dirname(os.path.realpath(__file__))}/storage/selectors.yaml')
-        return self._extractor_
-
-    @property
-    def sem_web_client(self):
-        if not self._web_client_:
-            self.init_web_client()
-        return self._sem_web_client_
-
-    @property
-    def web_client(self):
-        if not self._web_client_:
-            self.init_web_client()
-        return self._web_client_
-
-    @property
-    def selectors_new(self):
-        if not self._selectors_new_:
-            self._selectors_new_ = get_yaml(
-                f'{os.path.dirname(os.path.realpath(__file__))}/storage/selectors_new.yaml'
-            )
-        return self._selectors_new_
-
-    async def init_my_pypperteer(self):
-        profile = f'scraper_{self.country}'
-        if not self.my_pypperteer:
-            self.my_pypperteer = MyPyppeteer(profile)
-            await self.my_pypperteer.connect_browser()
-            await self.my_pypperteer.init_pool_pages(self.sem._value)
-
-    def init_web_client(self):
-        self._web_client_ = WebClient()
-        self._sem_web_client_ = asyncio.Semaphore(len(self.web_client.ip_publics))
-
-    def get_price_cost(self,price_str)->float:
+    def _get_price_cost(self,price_str)->float:
         """
         Recibe un texto y retorna un precio que se encuentre en este
         """
@@ -114,29 +64,33 @@ class CtrlsScraper:
         )
         logging.getLogger("log_print_full").debug(
             f'Price scraper: {price_str}. Price regex: {sale_price_regex}')
-        return float(sale_price_regex)
+        return sale_price_regex
+
+    def get_price_cost(self,price_str_1, price_str_2)->float:
+        """
+        Recibe dos string con informacion referente al costo de l producto
+        Retorna el precio del mismo. si el mismo esta disponible
+        """
+        price_str = self._get_price_cost(price_str_1)
+        if price_str == self.PRICE_NOT_FOUND:
+            price_str = self._get_price_cost(price_str_2)
+        return float(price_str)
 
     def _get_price_ship(self, price_str)->str:
-        price_shipping_str = price_shipping_or_err(
-                price_str, self.PRICE_NOT_FOUND
-            )
+        return price_shipping_or_err(price_str,
+                                    self.PRICE_NOT_FOUND,
+                                    self.pattern_price_shipping)
 
-        if price_shipping_str != self.PRICE_NOT_FOUND:
-            return price_shipping_str
-
-        return  price_or_err(self.pattern_price_shipping,
-                            price_str, self.PRICE_NOT_FOUND)
-
-    def get_price_ship(self,price_str_1, price_str_2)->float:
+    def get_price_ship(self,price_str_1:str, price_str_2:str)->float:
         """
         Recibe dos string con informacion referente al costo de envio
         Retorna el precio de envio. si el mismo esta disponible
         """
-        if not price_str_1 or not price_str_2:
+        if not price_str_1 and not price_str_2:
             return float(self.PRODUCT_NOT_AVAILABLE)
         if ' no se envía ' in price_str_2:
             return float(self.PRODUCT_NOT_SHIP)
-        
+
         price_shipping_str = self._get_price_ship(price_str_1)
         if price_shipping_str != self.PRICE_NOT_FOUND:
             return float(price_shipping_str)
@@ -321,7 +275,9 @@ class CtrlsScraper:
         if not title.strip():
             return dict()
 
-        price_product = self.get_price_cost(elements['cost_price1'])
+        price_product = self.get_price_cost(elements['cost_price1'],
+                                            elements['cost_price2'])
+        currency = elements['currency']
         price_shipping = self.get_price_ship(elements['ship_price1'],
                                             elements['ship_price1'])
 
@@ -347,108 +303,47 @@ class CtrlsScraper:
             "attributes": attributes,
             "images": images,
             "category": {"root": category_root, "child": category_child},
-            "price": {"product": price_product, "shipping": price_shipping},
+            "price": {"product": price_product, "shipping": price_shipping, "currency":currency},
             "dimensions": dimensions,
             "weight":weight,
             "quantity": quantity,
+            "link": self.url_origin.replace('sku',sku)
         }
         logging.getLogger("log_print_full").debug(f"{product['title']} {product['price']} {product['sku']}")
         return product
 
-    async def go_to_amazon(self, url:str, func, *args, **kwargs):
-        await self.init_my_pypperteer()
-        async with self.sem:
-            id_page, page = self.my_pypperteer.get_page_pool()
+    async def get_data(self, *args, **kwargs)->tuple:
+        """
+        Retorna los elementos predefinidos por los selectores
+        en el respectivo fichero .yaml y el cuerpo HTMl de la pagina
+        Return elements:dict, bodyHTML:str
+        """
+        pass
 
-            while True:
-                logging.getLogger("log_print_full").debug(f"URL: {url}")
-                input_chatpcha = await page.querySelector('[id="captchacharacters"]')
-                if not input_chatpcha:
-                    break
-                img_draw = await page.querySelector('form img')
-                img = await self.my_pypperteer.get_attribute(img_draw,'src',page)
-                await page.click(input_chatpcha)
-                value_chatpcha = input(f'Ingrese la solucion del chatpcha {img} :')
-                await page.keyboard.type(value_chatpcha)
-                page = await self.my_pypperteer.change_page(page)
-                await page.goto(url)
-
-            response = await func(page, *args, **kwargs)
-            self.my_pypperteer.close_page_pool(id_page)
-        return response
-
-    async def get_product_and_variations_with_pyppeteer(self, sku:str):
+    async def get_product(self, sku:str)->dict:
         url = self.url_origin.replace('sku',sku)
-
-        elements, bodyHTML = await self.go_to_amazon(url,func=self.get_data_with_pyppeteer)
-        skus = self.get_skus_data(bodyHTML)
-
-        if sku in skus:
-            skus.remove(sku)
-        
-        product = self.get_info_product(elements, sku, bodyHTML)
-
-        products = [product] if product else []
-        products_coros = [self.get_product_with_pyppeteer(sku) for sku in skus]
-        if products_coros:
-            products += await asyncio.gather(*products_coros)
-        return [product for product in products if product]
-
-    async def get_product_with_pyppeteer(self, sku:str):
-        url = self.url_origin.replace('sku',sku)
-        elements, bodyHTML = await self.go_to_amazon(url, func=self.get_data_with_pyppeteer)
+        elements, bodyHTML = await self.go_to_amazon(url, func=self.get_data,
+                                                    selectors='new')
 
         product = self.get_info_product(elements=elements, sku=sku,
                                             bodyHTML=bodyHTML)
         return product
 
-    async def get_data_with_pyppeteer(self, page):
+    async def get_product_and_variations(self, sku:str)->list:
         """
-        Retorna los elementos predefinidos por los selectores
-        en el respectivo fichero .yaml y el cuerpo HTMl de la pagina
+        Recibe el sku y retorna una lista de dictionarios de
+        self.get_info_product
         """
-        elements = dict()
-        for item in self.selectors_new:
-            if not self.selectors_new[item]['all']:
-                element = await self.my_pypperteer.get_property_from_querySelector(
-                    selector=self.selectors_new[item]['css'],
-                    attr=self.selectors_new[item]['pyppeteer'],
-                    page=page
-                )
-                elements[item] = element if element else ''
-            else:
-                elements[item] = await self.my_pypperteer.get_property_from_querySelectorAll(
-                    selector=self.selectors_new[item]['css'],
-                    attr=self.selectors_new[item]['pyppeteer'],
-                    page=page
-                )
+        pass
 
-        bodyHTML = await page.evaluate("() => document.body.innerHTML")
-        return elements, bodyHTML
-
-    async def new_product_with_pyppeteer(self, sku:str):
+    async def new_product(self, sku:str):
         """
         Scrapea un producto y sus variaciones desde la pagina de amazon y lo
         inserta en la base de datos
         """
-        products_draw = await self.get_product_and_variations_with_pyppeteer(sku)
-        products = list()
-        for _products_ in products_draw:
-            for p in _products_:
-                if p['title']:
-                    products.append(p)
-
+        products = await self.get_product_and_variations(sku)
         logging.getLogger('log_print').info(f'Inserting {len(products)} products in the database')
         await insert_items_in_database(products)
-
-    async def get_skus_from_page(self, page):
-        skus_draw = await page.evaluate("""
-            () => {
-                skus_elements = document.querySelectorAll('.s-result-list > div')
-                return Array.from(skus_elements).map( sku => sku.getAttribute('data-asin'))
-            }
-        """)
-        return [sku for sku in skus_draw if sku]
 
     async def get_news_skus_in_page(self, skus:list):
         skus = set(skus)
@@ -456,77 +351,28 @@ class CtrlsScraper:
         skus_in_database = await ProductModel().skus_in_database()
         return [sku for sku in skus if sku not in skus_in_database]
 
-    async def scraper_pages_with_pyppeteer(self, uri:str, number_page:int=0):
-        """
-        - Entra a una pagina de busqueda en Amazon.com
-        - Selecciona todos sku.
-        - Va de pagina en pagina scrapeando dicho producto
-        - Los inserta en la base de datos
-        """
-        while True:
-            number_page += 1
-            logging.getLogger('log_print').info(f'Scraping page number {number_page}')
-            url = f'{uri}&page={number_page}'
-
-            all_the_skus = await self.go_to_amazon(url, func=self.get_skus_from_page)
-
-            if not all_the_skus:
-                logging.getLogger('log_print').info(f'Finish Scraping in page number {number_page-1}')
-                break
-            skus = self.get_news_skus_in_page(all_the_skus)
-            logging.getLogger('log_print').info(f'New products for scrape in page: {len(skus)}')
-            if not skus:
-                continue
-
-            products_coros = [self.new_product_with_pyppeteer(sku) for sku in skus]
-            await asyncio.gather(*products_coros)
-
-    async def get_data_fast(self, sku:str):
-        """
-        Realiza una peticion en texto plano y se parsea el body para obtener los datos
-        deseados
-
-        Retorna la data obtenida de la pagina por medio de los selectores
-        """
-        async with self.sem_web_client:
-            url = self.url_origin.replace('sku',sku)
-
-            logging.getLogger("log_print_full").debug(f'realizando la peticion a {url}')
-            bodyHTML = await self.web_client.get(uri=url,
-                cookies=self.cookies,
-                return_data='text'
-                )
-            bodyHTML = bodyHTML if bodyHTML else ''
-            sleep = 2 + random()*(2*self.sleep_avg - 2*2)
-            data = self.extractor.extract(bodyHTML)
-            data['sku'] = sku
-            logging.getLogger("log_print_full").info(f'Analizando la data de {sku}. Luego de {sleep} seg se libera el loop')
-            logging.getLogger("log_print_full").debug(json.dumps(data, indent=True))
-            if data['captcha'] or not data['title']:
-                logging.getLogger("log_print_full").warning(f"APARECIO EL CAPTCHA. Fecha: {datetime.now()}. ¿O el producto {sku} no existe?")
-                breakpoint()
-            else:
-                await asyncio.sleep(sleep)
-
-        return data
-
     async def update_product(self, product):
-        product_data = await self.get_data_fast(product['provider_sku'])
-        product['cost_price'] = self.get_price_cost(product_data['cost_price'])
-        product['ship_price'] = self.get_price_ship(product_data['ship_price1'],
-                                                    product_data['ship_price2'])
-        product['quantity'] = self.get_quantity(product_data['quantity']) if (
+        elements, _ = await self.go_to_amazon(url=product['provider_link'],
+                                            func=self.get_data, selectors='update')
+
+        cost_price = self.get_price_cost(elements['cost_price1'],
+                                                elements['cost_price2'])
+        product['currency'] = elements['currency']
+        product['cost_price'] = cost_price if elements['title'] else float(self.PRICE_NOT_FOUND)
+        product['ship_price'] = self.get_price_ship(elements['ship_price1'],
+                                                    elements['ship_price2'])
+        product['quantity'] = self.get_quantity(elements['quantity']) if (
                                                 product['cost_price'] > 0) else 0
         product['last_update'] = datetime.now()
-        
+
         message = {
-            'cost_price': product_data['cost_price'],
+            'cost_price': product['cost_price'],
             'ship_price': product['ship_price'],
             'quantity': product['quantity'],
             'link': product['provider_link'],
         }
-        logging.getLogger('log_print_full').debug(json.dumps(message, indent=True))
 
+        logging.getLogger('log_print_full').debug(json.dumps(message, indent=True))
         return product
 
     async def update_products(self, chunk:int=100, sleep_end=60):
@@ -553,3 +399,252 @@ class CtrlsScraper:
                 sleep = sleep_end/6
             logging.getLogger("log_print_full").info(f"Durmiendo {sleep} seg.")
             await asyncio.sleep(sleep)
+
+    async def go_to_amazon(self, url:str, func, *args, **kwargs):
+        pass
+
+    def get_skus(self)->list:
+        pass
+
+    async def scraper_pages(self, uri:str, number_page:int=0):
+        """
+        - Entra a una pagina de busqueda en Amazon.com
+        - Selecciona todos sku.
+        - Va de pagina en pagina scrapeando dicho producto
+        - Los inserta en la base de datos
+        """
+        while True:
+            number_page += 1
+            logging.getLogger('log_print').info(f'Scraping page number {number_page}')
+            url = f'{uri}&page={number_page}'
+
+            all_the_skus = await self.go_to_amazon(url, func=self.get_skus)
+
+            if not all_the_skus:
+                logging.getLogger('log_print').info(f'Finish Scraping in page number {number_page-1}')
+                break
+            # skus = self.get_news_skus_in_page(all_the_skus)
+            skus = all_the_skus
+            logging.getLogger('log_print').info(f'New products for scrape in page: {len(skus)}')
+            if not skus:
+                continue
+
+            products_coros = [self.new_product(sku) for sku in skus]
+            await asyncio.gather(*products_coros)
+
+
+class PyppeteerScraper(CtrlsScraper):
+    _sem_ = asyncio.Semaphore(1)
+
+    _selectors_new_ = None
+    _selectors_update_ = None
+
+    def __init__(self, country:str='usa'):
+        super().__init__()
+        self.country = country
+
+    @property
+    def selectors_new(self):
+        if not self._selectors_new_:
+            self._selectors_new_ = get_yaml(self.path_new)
+        return self._selectors_new_
+
+    @property
+    def selectors_update(self):
+        if not self._selectors_update_:
+            self._selectors_update_ = get_yaml(self.path_update)
+        return self._selectors_update_
+
+    def get_selectors(self, _type_:str):
+        if _type_ == 'new':
+            return self.selectors_new
+        elif _type_ == 'update':
+            return self.selectors_new
+
+    async def init_my_pyppeteer(self):
+        profile = f'scraper_{self.country}'
+        if not self.my_pyppeteer:
+            self.my_pyppeteer = MyPyppeteer(profile)
+            await self.my_pyppeteer.connect_browser()
+            await self.my_pyppeteer.init_pool_pages(self.sem._value)
+
+    async def go_to_amazon(self, url:str, func, *args, **kwargs):
+        await self.init_my_pyppeteer()
+        async with self.sem:
+            id_page, page = self.my_pyppeteer.get_page_pool()
+
+            while True:
+                logging.getLogger("log_print_full").debug(f"URL: {url}")
+                await page.goto(url)
+                input_chatpcha = await page.querySelector('[id="captchacharacters"]')
+                if not input_chatpcha:
+                    break
+                img_draw = await page.querySelector('form img')
+                img = await self.my_pyppeteer.get_attribute(img_draw,'src',page)
+                await page.click(input_chatpcha)
+                value_chatpcha = input(f'Ingrese la solucion del chatpcha {img} :')
+                await page.keyboard.type(value_chatpcha)
+                page = await self.my_pyppeteer.change_page(page)
+
+            response = await func(page, *args, **kwargs)
+            self.my_pyppeteer.close_page_pool(id_page)
+        return response
+
+    async def get_data(self, page, *args, **kwargs)->tuple:
+        selectors = self.get_selectors(kwargs['selectors'])
+        elements = dict()
+        for item in selectors:
+            if selectors[item]['multiple']:
+                elements[item] = await self.my_pyppeteer.get_property_from_querySelectorAll(
+                    selector=selectors[item]['css'],
+                    attr=selectors[item]['pyppeteer'],
+                    page=page
+                )
+            else:
+                element = await self.my_pyppeteer.get_property_from_querySelector(
+                    selector=selectors[item]['css'],
+                    attr=selectors[item]['pyppeteer'],
+                    page=page
+                )
+                elements[item] = element if element else ''
+
+        bodyHTML = await page.evaluate("() => document.body.innerHTML")
+        return elements, bodyHTML
+
+    async def get_skus(self, page):
+        skus_draw = await page.evaluate("""
+            () => {
+                skus_elements = document.querySelectorAll('.s-result-list > div')
+                return Array.from(skus_elements).map( sku => sku.getAttribute('data-asin'))
+            }
+        """)
+        return [sku for sku in skus_draw if sku]
+
+    async def get_product_and_variations(self, sku:str):
+        url = self.url_origin.replace('sku',sku)
+
+        elements, bodyHTML = await self.go_to_amazon(url,func=self.get_data,
+                                                    selectors='new')
+        skus = self.get_skus_data(bodyHTML)
+
+        if sku in skus:
+            skus.remove(sku)
+        
+        product = self.get_info_product(elements, sku, bodyHTML)
+
+        products = [product] if product else []
+        products_coros = [self.get_product(sku) for sku in skus]
+        if products_coros:
+            products += await asyncio.gather(*products_coros)
+        return [product for product in products if product]
+
+
+class CurlScraper(CtrlsScraper):
+    _sem_ = asyncio.Semaphore(1)
+    sleep_avg = 5
+    cookies = {
+        "session-id":"132-4528637-2870205",
+        "ubid-main":"130-0267183-0060640",
+        "lc-main":"es_US",
+        "i18n-prefs":"USD",
+    }
+    _extractor_skus_ = None
+    _extractor_new_ = None
+    _extractor_update_ = None
+    _web_client_ = WebClient()
+
+    def __init__(self, country):
+        super().__init__()
+        self.country = country
+        if country == 'mx':
+            self.url_origin = self.url_origin.replace('.com', '.com.mx')
+            self.cookies = {"lc-main":"es_US"}
+   
+    @property
+    def extractor_skus(self):
+        if not self._extractor_skus_:
+            self._extractor_skus_ = Extractor.from_yaml_file(self.path_skus)
+        return self._extractor_skus_
+
+    @property
+    def extractor_new(self):
+        if not self._extractor_new_:
+            self._extractor_new_ = Extractor.from_yaml_file(self.path_new)
+        return self._extractor_new_
+
+    @property
+    def extractor_update(self):
+        if not self._extractor_update_:
+            self._extractor_update_ = Extractor.from_yaml_file(self.path_update)
+        return self._extractor_update_
+
+    def get_extractor(self, _type_):
+        if _type_ == 'new':
+            return self.extractor_new
+        elif _type_ == 'update':
+            return self.extractor_update
+
+    @property
+    def web_client(self):
+        return self._web_client_
+
+    @property
+    def sem(self):
+        return self._sem_
+
+    async def go_to_amazon(self, url:str, func, *args, **kwargs):
+        bodyHTML = ''
+        async with self.sem:
+            while True:
+                logging.getLogger("log_print_full").debug(f"URL: {url}")
+                sleep = 2 + random()*(2*self.sleep_avg - 2*2)
+                while not bodyHTML:
+                    bodyHTML = await self.web_client.get(uri=url,
+                                                        cookies=self.cookies,
+                                                        return_data='text')
+                    if not bodyHTML:
+                        logging.getLogger("log_print_full").warning(f"No hubo un error en la respuesta, reintentando peticion en {sleep}seg")
+                        await asyncio.sleep(sleep)
+                if ('alt="Dogs of Amazon"' in bodyHTML or 'ref=cs_404_logo' in bodyHTML):
+                    logging.getLogger("log_print_full").warning(f"ERROR 404 {url} ")
+                if (not 'captchacharacters' in bodyHTML):
+                    logging.getLogger("log_print_full").info(f"Peticion a {url} Realizada con exito.\n Luego de {sleep} se liberara el loop")
+                    await asyncio.sleep(sleep)
+                    break
+                sleep = 900
+                logging.getLogger("log_print_full").warning(f"APARECIO EL CAPTCHA. Fecha: {datetime.now()}. esperando {900}seg")
+                await asyncio.sleep(sleep)
+            response = func(bodyHTML,*args, **kwargs)
+        return response
+
+    def get_data(self, bodyHTML, *args, **kwargs)->tuple:
+        _type_ = kwargs['selectors']
+        extractor = self.get_extractor(_type_)
+        elements =  extractor.extract(bodyHTML)
+        for key in elements:
+            if not elements[key]:
+                elements[key] = ''
+
+        return elements, bodyHTML
+
+    def get_skus(self, bodyHTML):
+        result = self.extractor_skus.extract(bodyHTML)
+        return [sku for sku in result['skus'] if sku]
+
+    async def get_product_and_variations(self, sku:str):
+        url = self.url_origin.replace('sku',sku)
+
+        elements, bodyHTML = await self.go_to_amazon(url,func=self.get_data,
+                                                    selectors='new')
+        skus = self.get_skus_data(bodyHTML)
+
+        if sku in skus:
+            skus.remove(sku)
+
+        product = self.get_info_product(elements, sku, bodyHTML)
+
+        products = [product] if product else []
+        products_coros = [self.get_product(sku) for sku in skus]
+        if products_coros:
+            products += await asyncio.gather(*products_coros)
+        return [product for product in products if product]

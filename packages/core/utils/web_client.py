@@ -194,7 +194,7 @@ class WebClient(metaclass=Singleton):
                             logging.getLogger("log_print").debug(
                                 f"{rq_type}, {resp.status}, {resp.url}, {res_json.get('message')}, {res_json.get('cause')}"
                             )
-                            return res_json
+                            return final_res
                         else:
                             if res_json:
                                 logging.getLogger("log_print").info(

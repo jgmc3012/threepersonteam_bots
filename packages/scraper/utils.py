@@ -3,7 +3,7 @@ import re
 import yaml 
 
 
-def price_or_err(pattern: str, string, value_default, pos=-1) -> str:
+def price_or_err(pattern: str, string, value_default) -> str:
     """
     Este funcion recibe un patron con AL MENOS un grupo, una cadena de
     caracteres y una posicion del grupo que se desea retornar.
@@ -16,19 +16,19 @@ def price_or_err(pattern: str, string, value_default, pos=-1) -> str:
         string = string.replace(',', '')
     match = re.search(pattern, string)
     if match:
-        return match.groups()[pos]
+        return match.group('price').replace(',','')
     else:
         return value_default
 
-def price_shipping_or_err(string, value_default) -> str:
+def price_shipping_or_err(string, value_default, pattern) -> str:
     """
     Esta funcion recibe un string donde se buscara el texto 'FREE Shipping,\
     si lo encuentra retorna 0, de lo contrario retorna value_default.
     """
     if 'FREE Shipping' in string or 'Envío GRATIS' in string:
         return "0"
-    else:
-        return value_default
+    match = re.search(pattern, string)
+    return match.group('price').replace(',', '')
 
 def weight_converter(quantity, unit:str)->float:
     converter = {

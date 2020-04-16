@@ -69,14 +69,14 @@ class MyPyppeteer(metaclass=SingletonClass):
     async def init_pool_pages(self, number_pages:int)->dict:
         if not self.browser:
             await self.connect_browser()
-        pages = await self.browser.pages()
-        pages[0].setDefaultNavigationTimeout(self.TimeoutDefault)
-        self.pool[0] = pages[0]
-        self.pool['availables'].append(0)
-        # for i in range(number_pages):
-        #     self.pool[i] = await self.browser.newPage()
-        #     self.pool[i].setDefaultNavigationTimeout(self.TimeoutDefault)
-        #     self.pool['availables'].append(i)
+        # pages = await self.browser.pages()
+        # pages[0].setDefaultNavigationTimeout(self.TimeoutDefault)
+        # self.pool[0] = pages[0]
+        # self.pool['availables'].append(0)
+        for i in range(number_pages):
+            self.pool[i] = await self.browser.newPage()
+            self.pool[i].setDefaultNavigationTimeout(self.TimeoutDefault)
+            self.pool['availables'].append(i)
         return self.pool
 
     async def change_page(self, page):

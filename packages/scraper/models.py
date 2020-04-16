@@ -110,7 +110,7 @@ class PictureModel():
             await ConnectionsDB().get_connection(self.name_connection)
         ).insert(pictures, 'store_picture', self.keys)
 
-async def insert_items_in_database(self, products_draw:list):
+async def insert_items_in_database(products_draw:list):
     products = list()
     attributes = dict()
     pictures = dict()
@@ -123,8 +123,9 @@ async def insert_items_in_database(self, products_draw:list):
             'title':product['title'][:300], # :str, (max_length=60)
             'cost_price':product['price']['product'], # :float, (null=True)
             'ship_price':product['price']['shipping'], # :float,(null=True)
+            'currency': product['price']['currency'],  # :str,(null=True)
             'provider_sku':product['sku'], # :str, (max_length=50, unique=True)
-            'provider_link':self.url_origin.replace('sku',product['sku']), # :str, (max_length=255, unique=True)
+            'provider_link':product['link'], # :str, (max_length=255, unique=True)
             'image':product['images'][0].replace('.jpg', '._AC_UY150_ML3_.jpg'), # :liststr, (max_length=255)
             'category_name':product['category']['child'] if product['category']['child'] else '', # models.CharField(max_length=60) #"Temporal." Para el scraper de amazon
             'description':product['description'], # :str, (null=True, default=None)
