@@ -1,0 +1,49 @@
+title:
+    multiple: False
+    css: '#title, #productTitle'
+    type: Text
+    pyppeteer: innerText
+
+cost_price1:
+    multiple: False
+    css: '#priceblock_ourprice, #priceblock_saleprice'
+    type: Text
+    pyppeteer: innerText
+
+cost_price2:
+    multiple: False
+    css: '[data-feature-name="priceInsideBuyBox"]'
+    type: Text
+    pyppeteer: innerText
+
+ship_price1:
+    multiple: False
+    css: '#ourprice_shippingmessage'
+    type: Text
+    pyppeteer: innerText
+
+ship_price2:
+    multiple: False
+    css: '#price-shipping-message, #buyNewInner'
+    type: Text
+    pyppeteer: innerText
+
+quantity:
+    multiple: False
+    css: '#quantity option:last-child'
+    type: Attribute
+    attribute: value
+    pyppeteer: value
+
+currency:
+    multiple: False
+    css: '#cerberus-data-metrics'
+    type: Attribute
+    attribute: data-asin-currency-code
+    pyppeteer: data-asin-currency-code
+
+captcha:
+    multiple: False
+    css: '[id="captchacharacters"]'
+    type: Text
+    pyppeteer: innerText

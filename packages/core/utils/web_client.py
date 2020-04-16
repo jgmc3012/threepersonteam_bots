@@ -78,7 +78,7 @@ class WebClient(metaclass=Singleton):
         self.ip_publics = []
         coros = []
         for ip in ips:
-            conn = aiohttp.TCPConnector(
+            conn = aiohttp.connector.TCPConnector(
                 local_addr=(ip, 0), limit=300, loop=AppLoop().get_loop()
             )
             session = AutoRetrySession(
@@ -106,10 +106,11 @@ class WebClient(metaclass=Singleton):
             self,
             uri:str,
             rq_type="get",
-            payload={},
+            payload=dict(),
             params=None,
             return_data="json",
-            headers={},
+            headers=dict(),
+            cookies=dict(),
             **kwargs,
         ):
             if payload:
@@ -120,7 +121,12 @@ class WebClient(metaclass=Singleton):
             while i < max_reintents:  # max_reintents por si no recibe un Json
                 i += 1
                 async with (await self.get_session()).__getattribute__(rq_type)(
-                    uri, data=payload, params=params, headers=headers, verify_ssl=False
+                    uri,
+                    data=payload,
+                    params=params,
+                    headers=headers,
+                    verify_ssl=False,
+                    cookies=cookies
                 ) as resp:
                     if not resp:
                         logging.getLogger("log_print").error(
@@ -188,7 +194,7 @@ class WebClient(metaclass=Singleton):
                             logging.getLogger("log_print").debug(
                                 f"{rq_type}, {resp.status}, {resp.url}, {res_json.get('message')}, {res_json.get('cause')}"
                             )
-                            return res_json
+                            return final_res
                         else:
                             if res_json:
                                 logging.getLogger("log_print").info(
