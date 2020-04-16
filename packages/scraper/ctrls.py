@@ -257,12 +257,15 @@ class CtrlsScraper:
                     break
             elif 'twister-js-init-dpx-data' in line:
                 dataToReturn = True
-        try:
-            py_obj = demjson.decode(js_obj)
-            variations_data = py_obj['asinVariationValues']
-        except Exception:
-            logging.getLogger('log_print').error(f'Error extrayendo los datos de las variacion en del dataToReturn : {Exception}.')
-            variations_data = dict()
+
+        variations_data = dict()
+        if js_obj != '{':
+            try:
+                py_obj = demjson.decode(js_obj)
+                variations_data = py_obj['asinVariationValues']
+            except Exception:
+                logging.getLogger('log_print').error(f'Error extrayendo los datos de las variacion en del dataToReturn.')
+                logging.getLogger('log').error(f'Error extrayendo los datos de las variacion en del dataToReturn en el objecto {js_obj}.')
 
         return list(variations_data.keys())
 
@@ -343,7 +346,7 @@ class CtrlsScraper:
         """
         products = await self.get_product_and_variations(sku)
         logging.getLogger('log_print').info(f'Inserting {len(products)} products in the database')
-        await insert_items_in_database(products)
+        # await insert_items_in_database(products)
 
     async def get_news_skus_in_page(self, skus:list):
         skus = set(skus)
@@ -597,8 +600,8 @@ class CurlScraper(CtrlsScraper):
         async with self.sem:
             while True:
                 logging.getLogger("log_print_full").debug(f"URL: {url}")
-                sleep = 2 + random()*(2*self.sleep_avg - 2*2)
                 while not bodyHTML:
+                    sleep = 2 + random()*(2*self.sleep_avg - 2*2)
                     bodyHTML = await self.web_client.get(uri=url,
                                                         cookies=self.cookies,
                                                         return_data='text')
