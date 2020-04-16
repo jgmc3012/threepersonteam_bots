@@ -599,15 +599,20 @@ class CurlScraper(CtrlsScraper):
         bodyHTML = ''
         async with self.sem:
             while True:
+                vuelta = 0
                 logging.getLogger("log_print_full").debug(f"URL: {url}")
                 while not bodyHTML:
+                    vuelta +=1
                     sleep = 2 + random()*(2*self.sleep_avg - 2*2)
                     bodyHTML = await self.web_client.get(uri=url,
                                                         cookies=self.cookies,
                                                         return_data='text')
                     if not bodyHTML:
-                        logging.getLogger("log_print_full").warning(f"No hubo un error en la respuesta, reintentando peticion en {sleep}seg")
-                        await asyncio.sleep(sleep)
+                        logging.getLogger("log_print_full").warning(f"No hubo un error en la respuesta. intenta {vuelta}, reintentando peticion en {sleep}seg")
+                        if vuelta > 3:
+                            bodyHTML = 'xxx'
+                        else:
+                            await asyncio.sleep(sleep)
                 if ('alt="Dogs of Amazon"' in bodyHTML or 'ref=cs_404_logo' in bodyHTML):
                     logging.getLogger("log_print_full").warning(f"ERROR 404 {url} ")
                 if (not 'captchacharacters' in bodyHTML):

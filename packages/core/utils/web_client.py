@@ -200,7 +200,7 @@ class WebClient(metaclass=Singleton):
                                 logging.getLogger("log_print").info(
                                     f"{rq_type}, {resp.status}, {resp.url}, -{await resp.text()}-"
                                 )
-                            return
+                            return final_res
                     except Exception as e:
                         logging.getLogger("log").error(
                             f"Error on {rq_type} return_data:{return_data} {uri}, {e}"
